@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "Meridian Rail",
+    "slug": "meridian-rail",
+    "version": "1.0.0",
+    "scheme": "meridian",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0B1A22"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.meridianrail.app",
+      "config": { "usesNonExemptEncryption": false },
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "Meridian Rail uses your location to guide you to your departure station and to track your journey in real time.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Background location lets Meridian Rail tell you when your stop is approaching, even with the screen off.",
+        "UIBackgroundModes": ["location", "remote-notification"]
+      }
+    },
+    "android": {
+      "package": "com.meridianrail.app",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0B1A22"
+      },
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION",
+        "POST_NOTIFICATIONS",
+        "VIBRATE"
+      ]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Meridian Rail uses your location to guide you to your platform and to alert you before your stop.",
+          "isAndroidBackgroundLocationEnabled": true
+        }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#0F5D5A",
+          "defaultChannel": "journey"
+        }
+      ]
+    ],
+    "experiments": { "typedRoutes": true },
+    "extra": {
+      "apiBaseUrl": "https://api.meridianrail.example/v1",
+      "realtimeUrl": "wss://realtime.meridianrail.example/v1/stream",
+      "installUrl": "https://install.meridianrail.example"
+    }
+  }
+}
