@@ -1,4 +1,4 @@
-import { TrainPosition, TrainService } from '@/types';
+import { Coordinate, TrainPosition, TrainService } from '@/types';
 import { config } from './config';
 import { pointAlong } from '@/utils/geo';
 
@@ -115,20 +115,24 @@ export const positionStream = new PositionStream();
  * the fallback whenever the live feed has nothing for a service - a train that
  * is running to time is exactly where the timetable says it is.
  */
-export function timetablePosition(service: TrainService, now = Date.now()): TrainPosition {
+export function timetablePosition(
+  service: TrainService,
+  geometry: Coordinate[],
+  now = Date.now(),
+): TrainPosition {
   const calls = service.calls;
   const first = calls[0];
   const last = calls[calls.length - 1];
   if (!first || !last) {
     return {
       serviceId: service.id,
-      coordinate: service.geometry[0] ?? { lat: 0, lon: 0 },
+      coordinate: geometry[0] ?? { lat: 0, lon: 0 },
       bearing: 0,
       speedKph: 0,
       progress: 0,
       nextCallSequence: 0,
       recordedAt: new Date(now).toISOString(),
-      source: 'interpolated',
+      source: 'timetable',
     };
   }
 
@@ -164,7 +168,7 @@ export function timetablePosition(service: TrainService, now = Date.now()): Trai
     }
   }
 
-  const { point, bearing } = pointAlong(service.geometry, progress);
+  const { point, bearing } = pointAlong(geometry, progress);
   const elapsedHours = Math.max(0.001, (Math.min(now, end) - start) / 3_600_000);
   const speedKph = progress <= 0 || progress >= 1 ? 0 : Math.round((progress * 320) / elapsedHours);
 
@@ -176,6 +180,6 @@ export function timetablePosition(service: TrainService, now = Date.now()): Trai
     progress,
     nextCallSequence,
     recordedAt: new Date(now).toISOString(),
-    source: 'interpolated',
+    source: 'timetable',
   };
 }

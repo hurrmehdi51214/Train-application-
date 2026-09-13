@@ -1,81 +1,107 @@
-import { Coordinate } from '@/types';
+import type { Coordinate } from '@/types';
 import { getStation } from './stations';
-import { interpolate } from '@/utils/geo';
+
+/**
+ * Track alignment.
+ *
+ * Shaping vertices only: the whole network is a few kilobytes at this
+ * resolution, which is what lets the route map render with the radio off.
+ * Where a Google Maps key is configured, `services/googleMaps.ts` replaces
+ * these with a real Directions polyline.
+ */
 
 /**
  * Track alignment between adjacent stations, as shaping vertices only. The
- * renderer densifies these at draw time. Storing the corridor this coarsely is
- * what makes the offline map viable: the whole network is a few kilobytes, so
- * it ships inside the app bundle and is refreshed with the reference-data
- * snapshot rather than as tiles.
+ * whole network is a few kilobytes at this resolution, which is what lets the
+ * route map render with the radio off. Where a Google Maps key is configured,
+ * `services/googleMaps.ts` replaces these with a real Directions polyline.
  */
 const SEGMENTS: Record<string, Coordinate[]> = {
-  'stn-kgx>stn-sve': [
-    { lat: 51.5644, lon: -0.1065 }, // Finsbury Park
-    { lat: 51.5983, lon: -0.1197 }, // Alexandra Palace
-    { lat: 51.6980, lon: -0.1830 }, // Potters Bar
-    { lat: 51.7645, lon: -0.2280 }, // Hatfield
-    { lat: 51.8017, lon: -0.2050 }, // Welwyn Garden City
-    { lat: 51.8690, lon: -0.1900 }, // Knebworth
+  'stn-khi-cantt>stn-hyd': [
+    { lat: 24.888, lon: 67.143 }, // Drigh Road
+    { lat: 24.95, lon: 67.35 }, // Landhi
+    { lat: 25.05, lon: 67.72 }, // Jhimpir side
+    { lat: 25.25, lon: 68.05 }, // Kotri approach
+    { lat: 25.367, lon: 68.308 }, // Kotri Junction
   ],
-  'stn-sve>stn-pbo': [
-    { lat: 51.9530, lon: -0.2640 }, // Hitchin
-    { lat: 52.0230, lon: -0.2680 }, // Arlesey
-    { lat: 52.0860, lon: -0.2650 }, // Biggleswade
-    { lat: 52.1310, lon: -0.2920 }, // Sandy
-    { lat: 52.2280, lon: -0.2600 }, // St Neots
-    { lat: 52.3300, lon: -0.1870 }, // Huntingdon
-    { lat: 52.4700, lon: -0.2380 }, // Holme
+  'stn-hyd>stn-nawabshah': [
+    { lat: 25.764, lon: 68.662 }, // Tando Adam
+    { lat: 25.927, lon: 68.622 }, // Shahdadpur
   ],
-  'stn-pbo>stn-gth': [
-    { lat: 52.6100, lon: -0.2700 }, // Werrington Junction
-    { lat: 52.6900, lon: -0.3700 }, // Tallington
-    { lat: 52.7200, lon: -0.4400 }, // Essendine
-    { lat: 52.7500, lon: -0.5000 }, // Little Bytham
-    { lat: 52.8100, lon: -0.5600 }, // Corby Glen
+  'stn-nawabshah>stn-rohri': [
+    { lat: 26.6, lon: 68.45 }, // Padidan
+    { lat: 27.112, lon: 68.423 }, // Mehrabpur
+    { lat: 27.529, lon: 68.761 }, // Khairpur
   ],
-  'stn-gth>stn-nng': [
-    { lat: 52.9600, lon: -0.6600 }, // Barkston
-    { lat: 53.0300, lon: -0.7500 }, // Claypole
+  'stn-rohri>stn-rykhan': [
+    { lat: 27.95, lon: 69.35 }, // Ghotki
+    { lat: 28.2, lon: 69.75 }, // Ubauro
+    { lat: 28.42, lon: 70.05 }, // Sadiqabad
   ],
-  'stn-nng>stn-don': [
-    { lat: 53.1600, lon: -0.8300 }, // Carlton-on-Trent
-    { lat: 53.2300, lon: -0.8800 }, // Tuxford
-    { lat: 53.3120, lon: -0.9460 }, // Retford
-    { lat: 53.3800, lon: -1.0100 }, // Ranskill
-    { lat: 53.4300, lon: -1.0500 }, // Bawtry
-    { lat: 53.4800, lon: -1.0900 }, // Rossington
+  'stn-rykhan>stn-bwp': [
+    { lat: 28.645, lon: 70.657 }, // Khanpur
+    { lat: 29.0, lon: 71.1 }, // Ahmadpur East
   ],
-  'stn-don>stn-yrk': [
-    { lat: 53.5800, lon: -1.1400 }, // Shaftholme Junction
-    { lat: 53.6600, lon: -1.1300 }, // Balne
-    { lat: 53.7200, lon: -1.1200 }, // Temple Hirst
-    { lat: 53.7600, lon: -1.1200 }, // Hambleton
-    { lat: 53.8900, lon: -1.1200 }, // Colton Junction
+  'stn-bwp>stn-mux-cantt': [
+    { lat: 29.75, lon: 71.6 }, // Samasatta
+    { lat: 30.0, lon: 71.52 }, // Shujaabad
   ],
-  'stn-don>stn-lds': [
-    { lat: 53.5700, lon: -1.1800 }, // Adwick
-    { lat: 53.5900, lon: -1.2800 }, // South Elmsall
-    { lat: 53.6300, lon: -1.3700 }, // Fitzwilliam
-    { lat: 53.6820, lon: -1.5020 }, // Wakefield Westgate
-    { lat: 53.7200, lon: -1.5100 }, // Outwood
+  'stn-mux-cantt>stn-khanewal': [{ lat: 30.24, lon: 71.7 }],
+  'stn-khanewal>stn-sahiwal': [
+    { lat: 30.44, lon: 72.355 }, // Mian Channu
+    { lat: 30.532, lon: 72.696 }, // Chichawatni
   ],
-  'stn-pbo>stn-don': [
-    { lat: 52.6100, lon: -0.2700 },
-    { lat: 52.9065, lon: -0.6432 },
-    { lat: 53.0823, lon: -0.8062 },
-    { lat: 53.3120, lon: -0.9460 },
+  'stn-sahiwal>stn-lhr': [
+    { lat: 30.81, lon: 73.45 }, // Okara
+    { lat: 31.023, lon: 73.85 }, // Pattoki
+    { lat: 31.245, lon: 74.215 }, // Raiwind
+    { lat: 31.456, lon: 74.312 }, // Kot Lakhpat
   ],
-  'stn-kgx>stn-pbo': [
-    { lat: 51.5983, lon: -0.1197 },
-    { lat: 51.7645, lon: -0.2280 },
-    { lat: 51.9018, lon: -0.2072 },
-    { lat: 52.1310, lon: -0.2920 },
-    { lat: 52.3300, lon: -0.1870 },
+  'stn-lhr>stn-gujranwala': [
+    { lat: 31.72, lon: 74.27 }, // Muridke
+    { lat: 31.95, lon: 74.23 }, // Kamoke
   ],
+  'stn-gujranwala>stn-gujrat': [{ lat: 32.445, lon: 74.12 }], // Wazirabad
+  'stn-gujrat>stn-jhelum': [{ lat: 32.701, lon: 73.96 }], // Lalamusa
+  'stn-jhelum>stn-rwp': [
+    { lat: 33.05, lon: 73.55 }, // Sohawa side
+    { lat: 33.254, lon: 73.305 }, // Gujar Khan
+    { lat: 33.45, lon: 73.15 }, // Mandra
+    { lat: 33.576, lon: 73.1 }, // Chaklala
+  ],
+  'stn-rwp>stn-isb': [{ lat: 33.64, lon: 73.05 }],
+  'stn-rwp>stn-taxila': [{ lat: 33.68, lon: 72.95 }, { lat: 33.72, lon: 72.88 }],
+  'stn-taxila>stn-attock': [{ lat: 33.77, lon: 72.6 }], // Hasan Abdal
+  'stn-attock>stn-nowshera': [
+    { lat: 33.9, lon: 72.24 }, // Attock Khurd bridge over the Indus
+    { lat: 33.99, lon: 72.05 }, // Akora Khattak
+  ],
+  'stn-nowshera>stn-pew': [{ lat: 34.01, lon: 71.75 }], // Pabbi
+  'stn-taxila>stn-havelian': [
+    { lat: 33.85, lon: 72.95 },
+    { lat: 33.98, lon: 73.05 }, // Haripur
+  ],
+  'stn-rohri>stn-jacobabad': [{ lat: 27.9, lon: 68.7 }], // Shikarpur side
+  'stn-jacobabad>stn-sibi': [
+    { lat: 28.6, lon: 68.25 }, // Jhatpat
+    { lat: 29.1, lon: 68.0 }, // Bakhtiarabad
+  ],
+  'stn-sibi>stn-quetta': [
+    { lat: 29.75, lon: 67.6 }, // Bolan Pass, Nari Gorge
+    { lat: 29.95, lon: 67.35 }, // Mach
+    { lat: 30.1, lon: 67.15 }, // Kolpur
+  ],
+  'stn-lhr>stn-fsd': [
+    { lat: 31.43, lon: 73.9 }, // Sheikhupura
+    { lat: 31.42, lon: 73.5 }, // Jaranwala side
+  ],
+  'stn-gujranwala>stn-sialkot': [{ lat: 32.33, lon: 74.35 }],
+  'stn-khi-cantt>stn-khi-city': [{ lat: 24.852, lon: 67.025 }],
+  'stn-hyd>stn-kotri': [{ lat: 25.38, lon: 68.33 }],
+  'stn-rohri>stn-sukkur': [{ lat: 27.695, lon: 68.875 }],
 };
 
-function segmentBetween(fromId: string, toId: string): Coordinate[] {
+function segment(fromId: string, toId: string): Coordinate[] {
   const forward = SEGMENTS[`${fromId}>${toId}`];
   if (forward) return forward;
   const reverse = SEGMENTS[`${toId}>${fromId}`];
@@ -84,14 +110,15 @@ function segmentBetween(fromId: string, toId: string): Coordinate[] {
 }
 
 /** Adds intermediate points so a polyline animates smoothly under the train. */
-export function densify(line: Coordinate[], stepsPerSegment = 6): Coordinate[] {
+export function densify(line: Coordinate[], stepsPerSegment = 5): Coordinate[] {
   if (line.length < 2) return line;
   const out: Coordinate[] = [line[0]!];
   for (let i = 1; i < line.length; i += 1) {
     const a = line[i - 1]!;
     const b = line[i]!;
     for (let step = 1; step <= stepsPerSegment; step += 1) {
-      out.push(interpolate(a, b, step / stepsPerSegment));
+      const t = step / stepsPerSegment;
+      out.push({ lat: a.lat + (b.lat - a.lat) * t, lon: a.lon + (b.lon - a.lon) * t });
     }
   }
   return out;
@@ -103,27 +130,8 @@ export function routeGeometry(stationIds: string[]): Coordinate[] {
   stationIds.forEach((stationId, index) => {
     const station = getStation(stationId);
     if (!station) return;
-    if (index > 0) {
-      const previous = stationIds[index - 1]!;
-      line.push(...segmentBetween(previous, stationId));
-    }
+    if (index > 0) line.push(...segment(stationIds[index - 1]!, stationId));
     line.push(station.coordinate);
   });
-  // Calling points must appear in the line, so insert them before densifying.
-  const ordered = stationIds
-    .map((id) => getStation(id)?.coordinate)
-    .filter((c): c is Coordinate => Boolean(c));
-  if (line.length === 0) return densify(ordered);
-  return densify(line, 5);
-}
-
-/**
- * Walking alignment from a coordinate to a station entrance. Real deployments
- * call the pedestrian routing service; offline we fall back to a two-segment
- * dog-leg, which is honest about being an approximation and still gives the
- * user the right direction to set off in.
- */
-export function walkingRoute(from: Coordinate, to: Coordinate): Coordinate[] {
-  const elbow: Coordinate = { lat: from.lat + (to.lat - from.lat) * 0.65, lon: from.lon };
-  return densify([from, elbow, to], 8);
+  return densify(line, 4);
 }

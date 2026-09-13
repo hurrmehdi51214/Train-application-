@@ -44,14 +44,14 @@ export async function configureChannels(): Promise<void> {
     description: 'Departure, approach and arrival alerts for a journey in progress.',
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 180, 90, 180],
-    lightColor: '#0F5D5A',
+    lightColor: '#0E7A3A',
   });
   await Notifications.setNotificationChannelAsync('disruption', {
     name: 'Delays and disruption',
     description: 'Changes to a train you are booked on: delays, platform changes, cancellations.',
     importance: Notifications.AndroidImportance.HIGH,
     vibrationPattern: [0, 260],
-    lightColor: '#C88A34',
+    lightColor: '#B8730B',
   });
 }
 
@@ -66,17 +66,15 @@ function noticeForPhase(phase: JourneyPhase, service: TrainService, call: Call |
     case 'onboard':
       return {
         channel: 'journey',
-        title: 'Your journey has started',
-        body: `The ${service.headcode} to ${stationName(service.destination)} has left ${stationName(service.origin)}. Settle in.`,
+        title: 'You\u2019re on your way',
+        body: `The ${service.name} has left ${stationName(service.originStationId)}. Settle in \u2014 we\u2019ll wake you before your stop.`,
       };
     case 'approaching':
       return {
         channel: 'journey',
         title: 'Your stop is next',
         body: call
-          ? `${stationName(call.stationId)} in about ${Math.max(1, call.delayMinutes + 5)} minutes${
-              call.platform ? `, platform ${call.platform}` : ''
-            }. Time to gather your things.`
+          ? `${stationName(call.stationId)} coming up${call.platform ? `, platform ${call.platform}` : ''}. Time to gather your things.`
           : 'Your stop is coming up. Time to gather your things.',
       };
     case 'arrived':
@@ -84,8 +82,8 @@ function noticeForPhase(phase: JourneyPhase, service: TrainService, call: Call |
         channel: 'journey',
         title: `Arrived at ${call ? stationName(call.stationId) : 'your destination'}`,
         body: call?.platform
-          ? `Platform ${call.platform}. Tap for onward connections from here.`
-          : 'Tap for onward connections from here.',
+          ? `Platform ${call.platform}. Tap to see buses, rickshaws and rides from here.`
+          : 'Tap to see buses, rickshaws and rides from here.',
       };
     default:
       return null;
@@ -120,7 +118,9 @@ export async function notifyDisruption(service: TrainService, call: Call, previo
   if (!delayChanged && !platformChanged) return;
 
   const where = stationName(call.stationId);
-  const title = platformChanged ? `Platform change at ${where}` : `${service.headcode} is ${delayLabel(call.delayMinutes).toLowerCase()}`;
+  const title = platformChanged
+    ? `Platform change at ${where}`
+    : `${service.name} is ${delayLabel(call.delayMinutes).toLowerCase()}`;
   const parts: string[] = [];
   if (platformChanged) parts.push(`Now platform ${call.platform}.`);
   if (delayChanged && call.delayMinutes > 0) {

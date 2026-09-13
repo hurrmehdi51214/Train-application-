@@ -1,16 +1,19 @@
 import {
+  Coordinate,
   JourneyOption,
   LastMileOption,
+  PassengerDetail,
   Station,
   Ticket,
   TrainPosition,
   TrainService,
+  TravelClass,
 } from '@/types';
 import { config } from './config';
 import { accessToken, deviceId, TokenSet } from './auth';
 import * as offline from './offline';
 import { STATIONS } from '@/data/stations';
-import { allServices, getService, searchJourneys } from '@/data/services';
+import { allServices, getService, searchJourneys, serviceGeometry, todayIso } from '@/data/trains';
 import { lastMileFor } from '@/data/lastMile';
 import { issueFixtureTicket } from './ticketIssuer';
 
@@ -19,7 +22,7 @@ import { issueFixtureTicket } from './ticketIssuer';
  *
  * Every read follows the same rule: serve the cache immediately if we have it,
  * then reconcile in the background. Callers get a `Result` that says where the
- * data came from, so a screen can honestly label itself "offline" instead of
+ * data came from, so a screen can honestly label itself "last saved" instead of
  * silently showing yesterday's platform number.
  */
 
@@ -37,8 +40,6 @@ export class ApiError extends Error {
 export interface Result<T> {
   data: T;
   source: 'network' | 'cache';
-  /** Set when `source` is 'cache'; how old the copy is, in ms. */
-  ageMs?: number;
   stale?: boolean;
 }
 
@@ -60,7 +61,6 @@ async function refreshTokens(refreshToken: string): Promise<TokenSet> {
 interface RequestOptions {
   method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   body?: unknown;
-  /** Skip the Authorization header for genuinely public endpoints. */
   anonymous?: boolean;
   signal?: AbortSignal;
 }
@@ -70,12 +70,11 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.requestTimeoutMs);
-  // Honour a caller's own abort signal alongside our timeout.
   options.signal?.addEventListener('abort', () => controller.abort());
 
   const headers: Record<string, string> = {
     accept: 'application/json',
-    'x-meridian-client': 'mobile',
+    'x-safar-client': 'mobile',
     'x-device-id': await deviceId(),
   };
   if (body !== undefined) headers['content-type'] = 'application/json';
@@ -131,59 +130,69 @@ async function cachedRead<T>(
     return { data, source: 'network' };
   } catch (error) {
     const cached = await offline.read<T>(cacheKey);
-    if (cached) {
-      return {
-        data: cached.value,
-        source: 'cache',
-        stale: cached.freshness === 'stale',
-      };
-    }
+    if (cached) return { data: cached.value, source: 'cache', stale: cached.freshness === 'stale' };
     throw error;
   }
 }
 
 export const api = {
+  /** Pinned: search and the offline map must work with no connection, forever. */
   stations(): Promise<Result<Station[]>> {
-    // Pinned: the map and search must work with no connection, forever.
-    return cachedRead(
-      offline.cacheKeys.stations,
-      null,
-      () => request<Station[]>('/stations'),
-      () => STATIONS,
-    );
+    return cachedRead(offline.cacheKeys.stations, null, () => request<Station[]>('/stations'), () => STATIONS);
   },
 
-  service(id: string): Promise<Result<TrainService>> {
+  service(id: string, date = todayIso()): Promise<Result<TrainService>> {
     return cachedRead(
       offline.cacheKeys.service(id),
       2 * 60_000,
-      () => request<TrainService>(`/services/${encodeURIComponent(id)}`),
+      () => request<TrainService>(`/services/${encodeURIComponent(id)}?date=${date}`),
       () => {
-        const service = getService(id);
+        const service = getService(id, date);
         if (!service) throw new ApiError('Service not found', 404, 'service_not_found');
         return service;
       },
     );
   },
 
-  boardAt(stationId: string): Promise<Result<TrainService[]>> {
-    return cachedRead(
-      `board.${stationId}`,
-      60_000,
-      () => request<TrainService[]>(`/stations/${encodeURIComponent(stationId)}/departures`),
-      () => allServices().filter((s) => s.calls.some((c) => c.stationId === stationId)),
-    );
+  /** Route alignment. Pinned - track does not move, and the map needs it offline. */
+  async geometry(serviceId: string): Promise<Coordinate[]> {
+    const key = offline.cacheKeys.geometry(serviceId);
+    const cached = await offline.read<Coordinate[]>(key);
+    if (cached) return cached.value;
+
+    const service = getService(serviceId);
+    const line = service ? serviceGeometry(service) : [];
+    if (line.length) await offline.pin(key, line);
+    return line;
   },
 
-  searchJourneys(originId: string, destinationId: string): Promise<Result<JourneyOption[]>> {
+  searchJourneys(originId: string, destinationId: string, date = todayIso()): Promise<Result<JourneyOption[]>> {
     return cachedRead(
-      offline.cacheKeys.journeySearch(originId, destinationId),
+      offline.cacheKeys.journeySearch(originId, destinationId, date),
       3 * 60_000,
       () =>
         request<JourneyOption[]>(
-          `/journeys?origin=${encodeURIComponent(originId)}&destination=${encodeURIComponent(destinationId)}`,
+          `/journeys?origin=${encodeURIComponent(originId)}&destination=${encodeURIComponent(destinationId)}&date=${date}`,
         ),
-      () => searchJourneys(originId, destinationId),
+      () => searchJourneys(originId, destinationId, date),
+    );
+  },
+
+  featured(): Promise<Result<TrainService[]>> {
+    return cachedRead(
+      'featured',
+      5 * 60_000,
+      () => request<TrainService[]>('/services/featured'),
+      () => allServices(),
+    );
+  },
+
+  departures(stationId: string): Promise<Result<TrainService[]>> {
+    return cachedRead(
+      offline.cacheKeys.board(stationId),
+      60_000,
+      () => request<TrainService[]>(`/stations/${encodeURIComponent(stationId)}/departures`),
+      () => allServices().filter((s) => s.calls.some((c) => c.stationId === stationId)),
     );
   },
 
@@ -208,28 +217,26 @@ export const api = {
    */
   async purchase(input: {
     journeyId: string;
-    fareId: string;
-    passengerName: string;
-    coach?: string | null;
-    seat?: string | null;
+    travelClass: TravelClass;
+    passengers: PassengerDetail[];
+    preferLowerBerth: boolean;
     idempotencyKey: string;
   }): Promise<Ticket> {
     if (config.useFixtures) return issueFixtureTicket(input);
     return request<Ticket>('/tickets', { method: 'POST', body: input });
   },
 
-  async activateTicket(ticketId: string): Promise<void> {
+  async boardTicket(ticketId: string): Promise<void> {
     if (config.useFixtures) return;
     try {
-      await request<void>(`/tickets/${encodeURIComponent(ticketId)}/activate`, { method: 'POST' });
+      await request<void>(`/tickets/${encodeURIComponent(ticketId)}/board`, { method: 'POST' });
     } catch (error) {
-      // Activation must survive a dead signal at the barrier: queue and move on.
-      await offline.enqueue({ path: `/tickets/${ticketId}/activate`, method: 'POST', body: {} });
+      // Boarding must survive a dead signal on a platform: queue and move on.
+      await offline.enqueue({ path: `/tickets/${ticketId}/board`, method: 'POST', body: {} });
       if (!(error instanceof ApiError)) throw error;
     }
   },
 
-  /** Drains the offline outbox. Called on reconnect. */
   flushOutbox() {
     return offline.flush((item) =>
       request<void>(item.path, { method: item.method, body: item.body }).then(() => undefined),

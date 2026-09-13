@@ -79,22 +79,53 @@ cold start cannot stampede the token endpoint.
 
 ## Payments
 
-**The app never sees a card number.** Collecting PANs in a React Native view
-would pull the whole mobile estate into PCI-DSS scope for no benefit. The flow
-is: the gateway creates an intent, the platform sheet or the provider's SDK
+**The app never sees a card number, a wallet PIN or an OTP.** Collecting any of
+those in a React Native view would pull the whole mobile estate into PCI-DSS
+scope, and in the wallet case would be indistinguishable from a phishing screen.
+The flow is: the gateway creates an intent, the provider's own sheet or SDK
 collects the instrument, and the app handles only an opaque token.
 
-`openPaymentSheet` in `src/services/payments.ts` is the single seam. It is the
-one function that must be replaced before this goes near real money, and it is
-intentionally the only one.
+The method list is Pakistan's rather than a copy of a Western checkout
+(`src/services/payments.ts`). JazzCash and Easypaisa come first because mobile
+wallets clear the large majority of online payments here, then 1Link bank
+transfer, then card, then the platform sheet where the device offers one.
+
+`openPaymentSheet` is the single seam. It is the one function that must be
+replaced before this goes near real money, and it is intentionally the only one.
 
 **Purchase is idempotent.** The unique index on `(subject, idempotency_key)` in
-`server/src/db/schema.sql` is what enforces it - not an application-level check,
+`server/src/db/schema.sql` is what enforces it, not an application-level check,
 which would race. A retry after a dropped response returns the same ticket
 rather than minting a second one and charging twice.
 
 **Issuance and capture are one transaction.** If signing fails after capture, the
 whole thing rolls back and the authorisation is released.
+
+## The Google Maps keys
+
+Two keys, because the halves have different security properties.
+
+The **client key** renders maps through the Maps SDK. It ships in the bundle by
+nature, so it is restricted by iOS bundle id, Android signing certificate and
+web referrer, with only the Maps SDKs enabled on it. A restricted rendering key
+that leaks costs nothing because it will not authenticate from anywhere else.
+
+The **server key** authenticates Directions, Geocoding, Places and Distance
+Matrix. Those are billable and cannot be restricted by bundle id or referrer, so
+a server key in an app binary is money that anyone with `unzip` can spend. It
+lives in `server/.env` and is used only by `server/src/routes/maps.ts`.
+
+That proxy is written to be useless to anyone else:
+
+- every parameter is schema-validated, and coordinates are rejected outside
+  Pakistan's bounding box, so it cannot be turned into a free geocoding relay
+  for someone else's project;
+- Places is field-masked to `geometry/location`, because Places bills per field
+  group;
+- responses are cut down to the handful of fields the app uses, which takes a
+  40 kB Directions reply to about 400 bytes;
+- Google's `error_message` is never passed through, because it can name the key;
+- an eight-second abort stops a slow upstream holding a connection open.
 
 ## Gateway hardening
 
@@ -126,6 +157,13 @@ otherwise rate-limit each other.
   time they open navigation - not on first launch.
 - Tickets and settings stay on the device. `evictUnpinned()` clears caches and
   never touches tickets.
+- **Only the last six digits of a CNIC are held.** Pakistan Railways requires a
+  CNIC for reserved accommodation, and a full national identity number is the
+  single most sensitive field this product could store. Six digits are enough
+  for a conductor to match a passenger against a manifest and not enough to
+  reconstruct the number.
+- Google Maps calls carry coordinates, never a passenger identifier, and the
+  gateway logs neither.
 
 ## Known gaps
 

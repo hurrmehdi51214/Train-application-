@@ -1,9 +1,9 @@
 {
   "expo": {
-    "name": "Meridian Rail",
-    "slug": "meridian-rail",
+    "name": "Safar",
+    "slug": "safar-rail",
     "version": "1.0.0",
-    "scheme": "meridian",
+    "scheme": "safar",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -11,24 +11,33 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#0B1A22"
+      "backgroundColor": "#0E7A3A"
     },
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.meridianrail.app",
-      "config": { "usesNonExemptEncryption": false },
+      "bundleIdentifier": "pk.safar.rail",
+      "config": {
+        "usesNonExemptEncryption": false,
+        "googleMapsApiKey": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY"
+      },
       "infoPlist": {
-        "NSLocationWhenInUseUsageDescription": "Meridian Rail uses your location to guide you to your departure station and to track your journey in real time.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "Background location lets Meridian Rail tell you when your stop is approaching, even with the screen off.",
-        "UIBackgroundModes": ["location", "remote-notification"]
+        "NSLocationWhenInUseUsageDescription": "Safar uses your location to show the walk to your station and to track your train in real time.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Background location lets Safar tell you when your stop is approaching, even with the screen off.",
+        "UIBackgroundModes": ["location", "remote-notification"],
+        "CFBundleAllowMixedLocalizations": true
       }
     },
     "android": {
-      "package": "com.meridianrail.app",
+      "package": "pk.safar.rail",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#0B1A22"
+        "backgroundColor": "#0E7A3A"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "$EXPO_PUBLIC_GOOGLE_MAPS_API_KEY"
+        }
       },
       "permissions": [
         "ACCESS_COARSE_LOCATION",
@@ -46,26 +55,29 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
+      "expo-font",
       [
         "expo-location",
         {
-          "locationAlwaysAndWhenInUsePermission": "Meridian Rail uses your location to guide you to your platform and to alert you before your stop.",
+          "locationAlwaysAndWhenInUsePermission": "Safar uses your location to guide you to your platform and to alert you before your stop.",
           "isAndroidBackgroundLocationEnabled": true
         }
       ],
       [
         "expo-notifications",
         {
-          "color": "#0F5D5A",
+          "icon": "./assets/notification-icon.png",
+          "color": "#0E7A3A",
           "defaultChannel": "journey"
         }
       ]
     ],
-    "experiments": { "typedRoutes": true },
+    "experiments": { "typedRoutes": false },
     "extra": {
-      "apiBaseUrl": "https://api.meridianrail.example/v1",
-      "realtimeUrl": "wss://realtime.meridianrail.example/v1/stream",
-      "installUrl": "https://install.meridianrail.example"
+      "apiBaseUrl": "https://api.safar.pk/v1",
+      "realtimeUrl": "wss://realtime.safar.pk/v1/stream",
+      "installUrl": "https://get.safar.pk",
+      "mapsProxyUrl": ""
     }
   }
 }

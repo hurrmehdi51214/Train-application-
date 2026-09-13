@@ -2,48 +2,62 @@ import React, { useEffect, useMemo } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 
-import { Screen, Section } from '@/components/primitives/Screen';
-import { Text } from '@/components/primitives/Text';
-import { Surface } from '@/components/primitives/Surface';
-import { Button } from '@/components/primitives/Button';
-import { Icon } from '@/components/primitives/Icon';
-import { LiveDot } from '@/components/primitives/LiveDot';
-import { MapCanvas } from '@/components/map/MapCanvas';
-import { RouteRail } from '@/components/rail/RouteRail';
-import { PlatformCard } from '@/components/rail/PlatformCard';
-import { DisruptionCard } from '@/components/rail/DisruptionCard';
-import { CarriageStrip } from '@/components/rail/CarriageStrip';
-import { AmenityGrid } from '@/components/rail/AmenityGrid';
-import { CrowdingMeter } from '@/components/rail/CrowdingMeter';
 import { useTheme } from '@/theme/ThemeProvider';
+import { Screen, GUTTER } from '@/components/primitives/Screen';
+import { Text } from '@/components/primitives/Text';
+import { Icon } from '@/components/primitives/Icon';
+import { Button } from '@/components/primitives/Button';
+import { Divider } from '@/components/primitives/Divider';
+import { Map } from '@/components/map/Map';
+import { MapMarker } from '@/components/map/types';
+import { RouteTimeline } from '@/components/rail/RouteTimeline';
+import { LiveDot, PlatformPanel } from '@/components/rail/LiveStatus';
+import { DisruptionNote } from '@/components/rail/DisruptionNote';
 import { useLiveService } from '@/hooks/useLiveService';
 import { useTick } from '@/hooks/useTick';
 import { useJourneyStore } from '@/state/useJourneyStore';
 import { upcomingTickets, useTicketStore } from '@/state/useTicketStore';
 import { getStation, stationName } from '@/data/stations';
-import { clockTime, delayLabel, durationLabel, minutesBetween, relativeLabel } from '@/utils/time';
-import { crowdingCopy } from '@/utils/format';
+import { clockTime, durationLabel, minutesBetween, relativeLabel } from '@/utils/time';
 import { JourneyPhase } from '@/types';
 
-const PHASE_COPY: Record<JourneyPhase, { title: string; detail: string }> = {
+const PHASE: Record<JourneyPhase, { title: string; detail: string }> = {
   idle: { title: 'Not started', detail: 'This journey has not begun yet.' },
-  'to-station': { title: 'On your way', detail: 'Head for the station - we will tell you the platform as soon as it is set.' },
-  'at-station': { title: 'Boarding soon', detail: 'Your train is being prepared. Make your way to the platform.' },
-  onboard: { title: 'Underway', detail: 'Sit back. We will nudge you before your stop.' },
-  approaching: { title: 'Your stop is next', detail: 'Gather your things and make your way to the doors.' },
+  'to-station': {
+    title: 'On your way',
+    detail: 'Head for the station. We will tell you the platform as soon as it is set.',
+  },
+  'at-station': {
+    title: 'Boarding soon',
+    detail: 'Your train is being prepared. Make your way to the platform and find your coach.',
+  },
+  onboard: { title: 'Under way', detail: 'Settle in. We will nudge you well before your stop.' },
+  approaching: {
+    title: 'Your stop is next',
+    detail: 'Gather your things and make your way towards the doors.',
+  },
   arrived: { title: 'Arrived', detail: 'Mind the gap. Onward connections are below.' },
   completed: { title: 'Journey complete', detail: 'Hope it went well.' },
 };
 
-export default function LiveJourneyScreen() {
+/**
+ * The live journey.
+ *
+ * The map is the screen. Everything else - the phase banner, the platform, the
+ * calling points - hangs off it, because the one question this screen exists to
+ * answer is "where am I and when do I get off".
+ */
+export default function JourneyScreen() {
   const { palette, space, radius } = useTheme();
   const { serviceId } = useLocalSearchParams<{ serviceId: string }>();
-  const now = useTick(15_000);
+  const now = useTick(20_000);
 
-  const { service, position, loading, fromCache, refresh } = useLiveService(serviceId);
+  const { service, geometry, position, loading, fromCache, refresh } = useLiveService(serviceId);
+
   const active = useJourneyStore((s) => s.active);
   const reconcile = useJourneyStore((s) => s.reconcile);
   const endJourney = useJourneyStore((s) => s.end);
+
   const tickets = useTicketStore((s) => s.tickets);
   const ticket = useMemo(
     () =>
@@ -61,28 +75,44 @@ export default function LiveJourneyScreen() {
 
   const phase = active?.phase ?? 'idle';
 
-  const boardingCall = useMemo(
-    () => service?.calls.find((c) => c.stationId === ticket?.originStationId),
-    [service, ticket],
-  );
-  const alightingCall = useMemo(
-    () => service?.calls.find((c) => c.stationId === ticket?.destinationStationId),
-    [service, ticket],
-  );
+  const boardingCall = service?.calls.find((c) => c.stationId === ticket?.originStationId);
+  const alightingCall = service?.calls.find((c) => c.stationId === ticket?.destinationStationId);
+  const focusCall = phase === 'to-station' || phase === 'at-station' ? boardingCall : alightingCall;
 
-  const focusCall =
-    phase === 'to-station' || phase === 'at-station' ? boardingCall : alightingCall;
-
-  const myCarriage = service?.carriages.find((c) => c.letter === ticket?.coach);
+  const markers = useMemo<MapMarker[]>(() => {
+    if (!service) return [];
+    const list: MapMarker[] = service.calls.map((call) => {
+      const station = getStation(call.stationId);
+      return {
+        id: call.stationId,
+        coordinate: station?.coordinate ?? { lat: 0, lon: 0 },
+        kind:
+          call.stationId === ticket?.originStationId
+            ? 'origin'
+            : call.stationId === ticket?.destinationStationId
+              ? 'destination'
+              : 'station',
+        label: station?.name,
+        passed: call.status === 'departed' || call.status === 'arrived',
+      };
+    });
+    if (position) {
+      list.push({
+        id: 'train',
+        coordinate: position.coordinate,
+        kind: 'train',
+        bearing: position.bearing,
+      });
+    }
+    return list;
+  }, [service, position, ticket]);
 
   if (loading && !service) {
     return (
       <Screen title="Live journey" back>
-        <Section>
-          <View style={{ paddingVertical: space.h3, alignItems: 'center' }}>
-            <ActivityIndicator color={palette.brand} />
-          </View>
-        </Section>
+        <View style={{ paddingVertical: 80, alignItems: 'center' }}>
+          <ActivityIndicator color={palette.brand} />
+        </View>
       </Screen>
     );
   }
@@ -90,173 +120,134 @@ export default function LiveJourneyScreen() {
   if (!service) {
     return (
       <Screen title="Live journey" back>
-        <Section>
-          <Surface padding={space.xl}>
-            <Icon name="alert" size={22} color={palette.critical} />
-            <Text variant="headline" style={{ marginTop: space.md }}>
-              We cannot find that service
-            </Text>
-            <Text variant="body" tone="secondary" style={{ marginTop: 4 }}>
-              It may have been cancelled or renumbered. Check your ticket for the latest details.
-            </Text>
-          </Surface>
-        </Section>
+        <View style={{ paddingHorizontal: GUTTER, paddingTop: space.xl }}>
+          <Icon name="alert" size={24} color={palette.error} />
+          <Text variant="subheading" style={{ marginTop: space.md }}>
+            We cannot find that train
+          </Text>
+          <Text variant="body" tone="secondary" style={{ marginTop: 4 }}>
+            It may have been cancelled or renumbered. Check your ticket for the latest details.
+          </Text>
+        </View>
       </Screen>
     );
   }
 
-  const copy = PHASE_COPY[phase];
+  const copy = PHASE[phase];
   const minutesRemaining = alightingCall
     ? minutesBetween(new Date(now), alightingCall.expectedArrival ?? alightingCall.scheduledArrival ?? '')
     : null;
 
   return (
-    <Screen
-      title={`${service.headcode} to ${stationName(service.destination)}`}
-      eyebrow={service.operator}
-      back
-      onRefresh={refresh}
-    >
-      <Section>
-        <Surface padding={0} style={{ overflow: 'hidden' }}>
-          <MapCanvas
-            height={280}
-            route={service.geometry}
-            stations={service.calls.map((call) => ({
-              id: call.stationId,
-              name: stationName(call.stationId),
-              coordinate: getStation(call.stationId)?.coordinate ?? { lat: 0, lon: 0 },
-              emphasis:
-                call.stationId === ticket?.originStationId || call.stationId === ticket?.destinationStationId
-                  ? 'primary'
-                  : 'secondary',
-              passed: call.status === 'departed' || call.status === 'arrived',
-            }))}
-            train={position ? { coordinate: position.coordinate, bearing: position.bearing } : null}
-          />
+    <Screen title={service.name} back onRefresh={refresh}>
+      <View style={{ paddingHorizontal: GUTTER }}>
+        <Map markers={markers} polyline={geometry} height={280} interactive />
 
-          <View style={{ padding: space.lg }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-              <LiveDot size={6} color={fromCache ? palette.textTertiary : palette.success} />
-              <Text variant="overline" tone={fromCache ? 'tertiary' : 'success'}>
-                {fromCache ? 'Last known position' : `Live · ${position?.speedKph ?? 0} km/h`}
-              </Text>
-            </View>
-            <Text variant="title" style={{ marginTop: space.sm }}>
-              {copy.title}
-            </Text>
-            <Text variant="body" tone="secondary" style={{ marginTop: 4 }}>
-              {copy.detail}
-            </Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, marginTop: space.md, marginLeft: -4 }}>
+          <LiveDot size={6} color={fromCache ? palette.textTertiary : palette.success} />
+          <Text variant="captionMedium" tone={fromCache ? 'tertiary' : 'success'}>
+            {/* "Live · 0 km/h" on a train that has not left yet is technically
+                true and completely useless. Say what is actually happening. */}
+            {fromCache
+              ? 'Last known position'
+              : (position?.progress ?? 0) <= 0
+                ? `Departs ${clockTime(boardingCall?.expectedDeparture ?? service.calls[0]?.expectedDeparture)} from ${stationName(service.originStationId)}`
+                : (position?.progress ?? 0) >= 1
+                  ? 'Arrived at the terminus'
+                  : `Live · ${position?.speedKph ?? 0} km/h`}
+          </Text>
+        </View>
 
-            {minutesRemaining !== null && minutesRemaining > 0 && phase !== 'idle' ? (
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  gap: space.sm,
-                  marginTop: space.lg,
-                  padding: space.md,
-                  borderRadius: radius.sm,
-                  backgroundColor: palette.surfaceSunken,
-                }}
-              >
-                <Icon name="clock" size={15} color={palette.textSecondary} />
-                <Text variant="callout" tone="secondary">
-                  {durationLabel(minutesRemaining)} to {stationName(ticket?.destinationStationId ?? service.destination)}
-                  {alightingCall ? ` · arriving ${clockTime(alightingCall.expectedArrival)}` : ''}
-                </Text>
-              </View>
-            ) : null}
+        <Text variant="title" style={{ marginTop: space.sm }}>
+          {copy.title}
+        </Text>
+        <Text variant="bodyLarge" tone="secondary" style={{ marginTop: 4 }}>
+          {copy.detail}
+        </Text>
+
+        {minutesRemaining !== null && minutesRemaining > 0 && phase !== 'idle' ? (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              gap: space.sm,
+              marginTop: space.base,
+              padding: space.md,
+              borderRadius: radius.sm,
+              backgroundColor: palette.fill,
+            }}
+          >
+            <Icon name="clock" size={16} color={palette.textSecondary} />
+            <Text variant="body" tone="secondary" style={{ flex: 1 }}>
+              {durationLabel(minutesRemaining)} to{' '}
+              {stationName(ticket?.destinationStationId ?? service.destinationStationId)}
+            </Text>
           </View>
-        </Surface>
-      </Section>
+        ) : null}
+      </View>
 
       {service.disruptions.length > 0 ? (
-        <Section title="Service update">
+        <View style={{ paddingHorizontal: GUTTER, marginTop: space.lg }}>
           {service.disruptions.map((disruption) => (
-            <View key={disruption.id} style={{ marginBottom: space.sm }}>
-              <DisruptionCard disruption={disruption} />
-            </View>
+            <DisruptionNote key={disruption.id} disruption={disruption} />
           ))}
-        </Section>
+        </View>
       ) : null}
 
       {focusCall ? (
-        <Section title={phase === 'to-station' || phase === 'at-station' ? 'Your departure' : 'Your arrival'}>
-          <PlatformCard call={focusCall} live={!fromCache} />
-        </Section>
+        <View style={{ paddingHorizontal: GUTTER, marginTop: space.lg }}>
+          <Text variant="heading" style={{ marginBottom: space.md }}>
+            {phase === 'to-station' || phase === 'at-station' ? 'Your departure' : 'Your arrival'}
+          </Text>
+          <PlatformPanel call={focusCall} live={!fromCache} />
+        </View>
       ) : null}
 
-      <Section title="Calling at">
-        <Surface padding={space.lg}>
-          <RouteRail
-            service={service}
-            progress={position?.progress ?? 0}
-            boardingStationId={ticket?.originStationId}
-            alightingStationId={ticket?.destinationStationId}
-          />
-        </Surface>
-      </Section>
+      <Divider style={{ marginVertical: space.lg, marginHorizontal: GUTTER }} />
 
-      <Section title="On this train">
-        <Surface padding={space.lg}>
-          <CarriageStrip carriages={service.carriages} reservedCoach={ticket?.coach ?? null} />
-
-          {myCarriage ? (
-            <View style={{ marginTop: space.xl }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text variant="headline">Your coach, {myCarriage.letter}</Text>
-                <CrowdingMeter level={myCarriage.crowding} />
-              </View>
-              <Text variant="callout" tone="secondary" style={{ marginTop: 4 }}>
-                {crowdingCopy[myCarriage.crowding].detail}
-              </Text>
-              <View style={{ marginTop: space.lg }}>
-                <AmenityGrid amenities={myCarriage.amenities} dense />
-              </View>
-            </View>
-          ) : (
-            <Text variant="callout" tone="tertiary" style={{ marginTop: space.lg }}>
-              Tap a coach to see how busy it is and what is on board.
-            </Text>
-          )}
-        </Surface>
-      </Section>
+      <View style={{ paddingHorizontal: GUTTER }}>
+        <Text variant="heading" style={{ marginBottom: space.md }}>
+          Calling at
+        </Text>
+        <RouteTimeline
+          service={service}
+          progress={position?.progress ?? 0}
+          boardingStationId={ticket?.originStationId}
+          alightingStationId={ticket?.destinationStationId}
+        />
+      </View>
 
       {(phase === 'approaching' || phase === 'arrived' || phase === 'completed') && ticket ? (
-        <Section title="Getting onwards">
+        <View style={{ paddingHorizontal: GUTTER, marginTop: space.lg }}>
           <Button
-            label={`Connections from ${stationName(ticket.destinationStationId)}`}
+            label={`Getting around ${stationName(ticket.destinationStationId)}`}
             icon="arrow-right"
             fullWidth
-            onPress={() => router.push(`/lastmile/${ticket.destinationStationId}`)}
+            onPress={() => router.push(`/station/${ticket.destinationStationId}`)}
           />
-        </Section>
+        </View>
       ) : null}
 
-      <Section>
-        <View style={{ gap: space.sm }}>
-          {alightingCall && alightingCall.delayMinutes > 1 ? (
-            <Text variant="caption" tone="tertiary">
-              Running {delayLabel(alightingCall.delayMinutes).toLowerCase()}. If you arrive more than 15
-              minutes late you may be entitled to compensation - Account has the form.
-            </Text>
-          ) : null}
+      <View style={{ paddingHorizontal: GUTTER, marginTop: space.lg, gap: space.sm }}>
+        <Text variant="caption" tone="tertiary">
+          Position updated {relativeLabel(position?.recordedAt)} from{' '}
+          {position?.source === 'gps'
+            ? 'the train'
+            : position?.source === 'trackside'
+              ? 'trackside signalling'
+              : 'the published timetable'}
+          .
+        </Text>
+        {alightingCall && alightingCall.delayMinutes > 15 ? (
           <Text variant="caption" tone="tertiary">
-            Position updated {relativeLabel(position?.recordedAt)} from{' '}
-            {position?.source === 'gps'
-              ? 'the train'
-              : position?.source === 'trackside'
-                ? 'trackside signalling'
-                : 'the timetable'}
-            .
+            Running {durationLabel(alightingCall.delayMinutes)} late. Pakistan Railways refunds part of the
+            fare on long delays; the claim form is in your Profile.
           </Text>
-          {active ? (
-            <Button label="End tracking" variant="ghost" size="sm" onPress={endJourney} />
-          ) : null}
-        </View>
-      </Section>
+        ) : null}
+        {active ? (
+          <Button label="Stop tracking" variant="ghost" size="sm" onPress={endJourney} />
+        ) : null}
+      </View>
     </Screen>
   );
 }

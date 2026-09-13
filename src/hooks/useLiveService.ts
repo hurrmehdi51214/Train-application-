@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 
-import { TrainPosition, TrainService } from '@/types';
+import { Coordinate, TrainPosition, TrainService } from '@/types';
 import { api } from '@/services/apiClient';
 import { positionStream, timetablePosition } from '@/services/realtime';
 
@@ -15,6 +15,7 @@ import { positionStream, timetablePosition } from '@/services/realtime';
  */
 export function useLiveService(serviceId: string | null | undefined, refreshMs = 20_000) {
   const [service, setService] = useState<TrainService | null>(null);
+  const [geometry, setGeometry] = useState<Coordinate[]>([]);
   const [position, setPosition] = useState<TrainPosition | null>(null);
   const [fromCache, setFromCache] = useState(false);
   const [error, setError] = useState<Error | null>(null);
@@ -22,16 +23,20 @@ export function useLiveService(serviceId: string | null | undefined, refreshMs =
 
   const serviceRef = useRef<TrainService | null>(null);
   serviceRef.current = service;
+  const geometryRef = useRef<Coordinate[]>([]);
+  geometryRef.current = geometry;
 
   const load = useCallback(async () => {
     if (!serviceId) return;
     try {
       const result = await api.service(serviceId);
+      const line = await api.geometry(serviceId);
       setService(result.data);
+      setGeometry(line);
       setFromCache(result.source === 'cache');
       setError(null);
       // Until a live packet arrives, the timetable is the best position we have.
-      setPosition((current) => current ?? timetablePosition(result.data));
+      setPosition((current) => current ?? timetablePosition(result.data, line));
     } catch (caught) {
       setError(caught instanceof Error ? caught : new Error('Could not load service'));
     } finally {
@@ -56,13 +61,13 @@ export function useLiveService(serviceId: string | null | undefined, refreshMs =
       const current = serviceRef.current;
       if (!current) return;
       setPosition((existing) => {
-        if (existing && existing.source !== 'interpolated') {
+        if (existing && existing.source !== 'timetable') {
           const age = Date.now() - new Date(existing.recordedAt).getTime();
           // Trust a real fix for 45s; after that the timetable is more honest
           // than a stale GPS point sitting still in the middle of a field.
           if (age < 45_000) return existing;
         }
-        return timetablePosition(current);
+        return timetablePosition(current, geometryRef.current);
       });
     }, 4_000);
     return () => clearInterval(timer);
@@ -96,5 +101,5 @@ export function useLiveService(serviceId: string | null | undefined, refreshMs =
     };
   }, [load, refreshMs]);
 
-  return { service, position, loading, fromCache, error, refresh: load };
+  return { service, geometry, position, loading, fromCache, error, refresh: load };
 }

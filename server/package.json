@@ -1,8 +1,8 @@
 {
-  "name": "@meridian/gateway",
+  "name": "@safar/gateway",
   "version": "1.0.0",
   "private": true,
-  "description": "Read-mostly API gateway between the Meridian Rail app and the operator's existing train system database.",
+  "description": "Safar gateway: a read-only bridge to Pakistan Railways' reservation and control systems, plus ticket signing and a Google Maps proxy.",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {
@@ -26,5 +26,7 @@
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
-  "engines": { "node": ">=20" }
+  "engines": {
+    "node": ">=20"
+  }
 }

@@ -13,7 +13,7 @@ interface TicketState {
   byId(id: string): Ticket | undefined;
 }
 
-const DONE: Ticket['status'][] = ['used', 'expired', 'refunded'];
+const DONE: Ticket['status'][] = ['completed', 'cancelled', 'refunded'];
 
 /**
  * Derivations are plain functions over the ticket array, not store selectors.
@@ -25,13 +25,13 @@ const DONE: Ticket['status'][] = ['used', 'expired', 'refunded'];
  */
 export function upcomingTickets(tickets: Ticket[], now = Date.now()): Ticket[] {
   return tickets
-    .filter((t) => !DONE.includes(t.status) && new Date(t.arrival).getTime() > now - 30 * 60_000)
+    .filter((t) => !DONE.includes(t.status) && new Date(t.arrival).getTime() > now - 60 * 60_000)
     .sort((a, b) => new Date(a.departure).getTime() - new Date(b.departure).getTime());
 }
 
 export function pastTickets(tickets: Ticket[], now = Date.now()): Ticket[] {
   return tickets
-    .filter((t) => DONE.includes(t.status) || new Date(t.arrival).getTime() <= now - 30 * 60_000)
+    .filter((t) => DONE.includes(t.status) || new Date(t.arrival).getTime() <= now - 60 * 60_000)
     .sort((a, b) => new Date(b.departure).getTime() - new Date(a.departure).getTime());
 }
 
@@ -48,9 +48,7 @@ export const useTicketStore = create<TicketState>()(
       },
 
       update(id, patch) {
-        set((state) => ({
-          tickets: state.tickets.map((t) => (t.id === id ? { ...t, ...patch } : t)),
-        }));
+        set((state) => ({ tickets: state.tickets.map((t) => (t.id === id ? { ...t, ...patch } : t)) }));
         const updated = get().tickets.find((t) => t.id === id);
         if (updated) void offline.pin(offline.cacheKeys.ticket(id), updated);
       },
@@ -63,9 +61,9 @@ export const useTicketStore = create<TicketState>()(
       byId: (id) => get().tickets.find((t) => t.id === id),
     }),
     {
-      name: 'meridian.tickets',
+      name: 'safar.tickets',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
       partialize: (state) => ({ tickets: state.tickets }),
     },
   ),

@@ -17,3 +17,4 @@ ios/
 android/
 server/dist/
 coverage/
+dist-mirror/

@@ -31,6 +31,15 @@ const schema = z.object({
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().default(120),
+
+  /**
+   * Server-side Google Maps key, for Directions / Places / Geocoding /
+   * Distance Matrix. This one is billable and cannot be restricted by bundle
+   * id or referrer, so it stays here and the app reaches it only through
+   * /v1/maps/*. Leaving it unset disables those routes; the app falls back to
+   * its bundled vector geometry, which is a supported mode, not a failure.
+   */
+  GOOGLE_MAPS_SERVER_KEY: z.string().default(''),
 });
 
 const parsed = schema.safeParse(process.env);

@@ -14,8 +14,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * a barrier with no signal is the single worst failure this app can have.
  */
 
-const PREFIX = 'meridian.cache.';
-const OUTBOX_KEY = 'meridian.outbox';
+const PREFIX = 'safar.cache.';
+const OUTBOX_KEY = 'safar.outbox';
 
 export interface CacheEntry<T> {
   value: T;
@@ -155,9 +155,9 @@ export async function flush(
 export const cacheKeys = {
   stations: 'stations',
   service: (id: string) => `service.${id}`,
-  journeySearch: (from: string, to: string) => `search.${from}.${to}`,
-  tickets: 'tickets',
+  journeySearch: (from: string, to: string, date: string) => `search.${from}.${to}.${date}`,
+  board: (stationId: string) => `board.${stationId}`,
   ticket: (id: string) => `ticket.${id}`,
   lastMile: (stationId: string) => `lastmile.${stationId}`,
-  mapTile: (stationId: string) => `map.${stationId}`,
+  geometry: (serviceId: string) => `geometry.${serviceId}`,
 } as const;

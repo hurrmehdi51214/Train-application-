@@ -1,119 +1,81 @@
-import { Platform, TextStyle } from 'react-native';
+import { TextStyle } from 'react-native';
 
 /**
- * Two families, used with intent:
- *   - `display` is a serif. It appears on station names, fares and journey
- *     headlines only. Rail signage has always been typographic, and a serif is
- *     what keeps the product from reading like a generic dashboard.
- *   - `text` is the platform UI face, which is what people actually read fast.
- * `mono` is reserved for coach/seat/platform codes, where digit alignment
- * matters more than warmth.
+ * Type.
+ *
+ * Airbnb sets everything in Cereal, a bespoke geometric-humanist sans by Dalton
+ * Maag. It is licensed only to Airbnb, so this uses Manrope - the closest freely
+ * licensed face in the same genus: geometric skeleton, humanist detailing, tall
+ * x-height, and the round single-storey shapes that make Cereal feel friendly
+ * rather than corporate.
+ *
+ * One family, six weights, no serif anywhere. Hierarchy comes from weight and
+ * size only, which is what keeps a photo-led interface calm. The scale below is
+ * Airbnb's own: 14/400 body, 16/500 UI labels, and headings stepping through
+ * 18, 20, 22, 26 and 32.
  */
-export const fonts = {
-  display: Platform.select({
-    ios: 'Iowan Old Style',
-    android: 'serif',
-    default: 'Iowan Old Style, Palatino, Georgia, serif',
-  }) as string,
-  text: Platform.select({
-    ios: 'System',
-    android: 'sans-serif',
-    default: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
-  }) as string,
-  mono: Platform.select({
-    ios: 'Menlo',
-    android: 'monospace',
-    default: 'ui-monospace, SFMono-Regular, Menlo, monospace',
-  }) as string,
-};
 
-type Variant =
+export const fontFamily = {
+  extraLight: 'Manrope_200ExtraLight',
+  light: 'Manrope_300Light',
+  regular: 'Manrope_400Regular',
+  medium: 'Manrope_500Medium',
+  semibold: 'Manrope_600SemiBold',
+  bold: 'Manrope_700Bold',
+  extraBold: 'Manrope_800ExtraBold',
+} as const;
+
+/**
+ * On web the bundled font may not have painted on first frame, so every style
+ * carries a real fallback stack rather than letting the browser drop to Times.
+ */
+const webStack = ', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+
+const face = (name: string) => ({ fontFamily: name + (typeof document === 'undefined' ? '' : webStack) });
+
+export type TypeVariant =
+  | 'hero'
   | 'display'
   | 'title'
-  | 'headline'
-  | 'body'
-  | 'bodyStrong'
-  | 'callout'
+  | 'heading'
+  | 'subheading'
+  | 'bodyLarge'
   | 'label'
+  | 'body'
+  | 'bodyMedium'
   | 'caption'
+  | 'captionMedium'
   | 'overline'
-  | 'numeric'
-  | 'numericLarge';
+  | 'price';
 
-export const type: Record<Variant, TextStyle> = {
-  display: {
-    fontFamily: fonts.display,
-    fontSize: 34,
-    lineHeight: 40,
-    letterSpacing: -0.6,
-    fontWeight: '600',
-  },
-  title: {
-    fontFamily: fonts.display,
-    fontSize: 25,
-    lineHeight: 31,
-    letterSpacing: -0.35,
-    fontWeight: '600',
-  },
-  headline: {
-    fontFamily: fonts.text,
-    fontSize: 17,
-    lineHeight: 23,
-    letterSpacing: -0.2,
-    fontWeight: '700',
-  },
-  body: {
-    fontFamily: fonts.text,
-    fontSize: 15,
-    lineHeight: 22,
-    letterSpacing: -0.1,
-    fontWeight: '400',
-  },
-  bodyStrong: {
-    fontFamily: fonts.text,
-    fontSize: 15,
-    lineHeight: 22,
-    letterSpacing: -0.1,
-    fontWeight: '600',
-  },
-  callout: {
-    fontFamily: fonts.text,
-    fontSize: 13.5,
-    lineHeight: 19,
-    fontWeight: '500',
-  },
-  label: {
-    fontFamily: fonts.text,
-    fontSize: 13,
-    lineHeight: 17,
-    fontWeight: '600',
-  },
-  caption: {
-    fontFamily: fonts.text,
-    fontSize: 12,
-    lineHeight: 16,
-    fontWeight: '500',
-  },
+export const type: Record<TypeVariant, TextStyle> = {
+  /** Onboarding and empty-state headlines only. */
+  hero: { ...face(fontFamily.extraBold), fontSize: 32, lineHeight: 38, letterSpacing: -0.8 },
+  /** Page titles. */
+  display: { ...face(fontFamily.extraBold), fontSize: 26, lineHeight: 32, letterSpacing: -0.6 },
+  /** Section titles, listing names. */
+  title: { ...face(fontFamily.bold), fontSize: 22, lineHeight: 28, letterSpacing: -0.4 },
+  heading: { ...face(fontFamily.bold), fontSize: 20, lineHeight: 26, letterSpacing: -0.3 },
+  subheading: { ...face(fontFamily.semibold), fontSize: 17, lineHeight: 23, letterSpacing: -0.2 },
+  /** Long-form reading. */
+  bodyLarge: { ...face(fontFamily.regular), fontSize: 16, lineHeight: 24, letterSpacing: -0.1 },
+  /** Buttons, tabs, form labels. */
+  label: { ...face(fontFamily.semibold), fontSize: 16, lineHeight: 22, letterSpacing: -0.1 },
+  body: { ...face(fontFamily.regular), fontSize: 14, lineHeight: 20 },
+  bodyMedium: { ...face(fontFamily.semibold), fontSize: 14, lineHeight: 20, letterSpacing: -0.1 },
+  caption: { ...face(fontFamily.regular), fontSize: 12, lineHeight: 16 },
+  captionMedium: { ...face(fontFamily.semibold), fontSize: 12, lineHeight: 16 },
+  /** Tiny all-caps eyebrow. Used sparingly - it is loud for its size. */
   overline: {
-    fontFamily: fonts.text,
-    fontSize: 10.5,
+    ...face(fontFamily.bold),
+    fontSize: 11,
     lineHeight: 14,
-    letterSpacing: 1.1,
-    fontWeight: '700',
+    letterSpacing: 0.8,
     textTransform: 'uppercase',
   },
-  numeric: {
-    fontFamily: fonts.mono,
-    fontSize: 14,
-    lineHeight: 18,
-    letterSpacing: 0.4,
-    fontWeight: '600',
-  },
-  numericLarge: {
-    fontFamily: fonts.mono,
-    fontSize: 22,
-    lineHeight: 26,
-    letterSpacing: 0.6,
-    fontWeight: '700',
-  },
+  /** Fares. Tabular-feeling, so a column of prices lines up. */
+  price: { ...face(fontFamily.extraBold), fontSize: 18, lineHeight: 24, letterSpacing: -0.4 },
 };
+
+/** The map from variant name to the font asset, for preloading. */
+export const fontAssets = fontFamily;

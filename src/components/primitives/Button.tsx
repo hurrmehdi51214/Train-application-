@@ -1,137 +1,131 @@
-import React, { useRef } from 'react';
-import {
-  ActivityIndicator,
-  Animated,
-  Platform,
-  Pressable,
-  PressableProps,
-  StyleSheet,
-  View,
-  ViewStyle,
-} from 'react-native';
-import * as Haptics from 'expo-haptics';
+import React from 'react';
+import { ActivityIndicator, View, ViewStyle } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { useTheme } from '@/theme/ThemeProvider';
 import { Text } from './Text';
 import { Icon, IconName } from './Icon';
+import { Touchable } from './Touchable';
 
-type Variant = 'primary' | 'secondary' | 'ghost' | 'critical';
+type Variant = 'primary' | 'dark' | 'outline' | 'ghost' | 'destructive';
 type Size = 'sm' | 'md' | 'lg';
 
-export interface ButtonProps extends Omit<PressableProps, 'style' | 'children'> {
+export interface ButtonProps {
   label: string;
+  onPress?: () => void;
   variant?: Variant;
   size?: Size;
   icon?: IconName;
   iconPosition?: 'leading' | 'trailing';
   loading?: boolean;
+  disabled?: boolean;
   fullWidth?: boolean;
   style?: ViewStyle;
-  /** Suppresses the haptic tap. Use for destructive confirmations only. */
-  silent?: boolean;
+  accessibilityHint?: string;
 }
 
-const heights: Record<Size, number> = { sm: 36, md: 46, lg: 54 };
+const HEIGHT: Record<Size, number> = { sm: 36, md: 44, lg: 52 };
 
+/**
+ * Buttons.
+ *
+ * Five variants, and the discipline is in how rarely the first one appears:
+ * `primary` carries the brand gradient and there is at most one per screen -
+ * Reserve, Confirm and pay, Search. `dark` is the workhorse for everything
+ * secondary that still needs weight, which is Airbnb's own pattern (their
+ * "Show 165 stays" button is solid near-black, not pink).
+ */
 export function Button({
   label,
+  onPress,
   variant = 'primary',
   size = 'md',
   icon,
   iconPosition = 'trailing',
   loading = false,
+  disabled = false,
   fullWidth = false,
-  disabled,
-  onPress,
-  silent = false,
   style,
-  ...rest
+  accessibilityHint,
 }: ButtonProps) {
-  const { palette, radius } = useTheme();
-  const scale = useRef(new Animated.Value(1)).current;
-
+  const { palette, radius, space } = useTheme();
   const isDisabled = disabled || loading;
 
-  const surfaces: Record<Variant, ViewStyle> = {
-    primary: { backgroundColor: palette.brand },
-    secondary: { backgroundColor: palette.surfaceSunken },
-    ghost: { backgroundColor: 'transparent' },
-    critical: { backgroundColor: palette.criticalSoft },
-  };
-  const contentColors: Record<Variant, string> = {
+  const content: Record<Variant, string> = {
     primary: palette.onBrand,
-    secondary: palette.textPrimary,
-    ghost: palette.brand,
-    critical: palette.critical,
+    dark: palette.mode === 'dark' ? palette.textInverse : '#FFFFFF',
+    outline: palette.textPrimary,
+    ghost: palette.textPrimary,
+    destructive: palette.error,
   };
 
-  const press = (to: number) =>
-    Animated.spring(scale, {
-      toValue: to,
-      useNativeDriver: true,
-      speed: 40,
-      bounciness: 4,
-    }).start();
+  const backgrounds: Record<Variant, ViewStyle> = {
+    primary: {},
+    dark: { backgroundColor: palette.textPrimary },
+    outline: { backgroundColor: 'transparent', borderWidth: 1, borderColor: palette.textPrimary },
+    ghost: { backgroundColor: 'transparent' },
+    destructive: { backgroundColor: palette.errorSoft },
+  };
 
-  const content = contentColors[variant];
+  const body = (
+    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: space.sm }}>
+      {loading ? (
+        <ActivityIndicator color={content[variant]} size="small" />
+      ) : (
+        <>
+          {icon && iconPosition === 'leading' ? (
+            <Icon name={icon} size={size === 'sm' ? 16 : 18} color={content[variant]} />
+          ) : null}
+          <Text
+            variant={size === 'sm' ? 'bodyMedium' : 'label'}
+            numberOfLines={1}
+            style={[
+              { color: content[variant] },
+              variant === 'ghost' ? { textDecorationLine: 'underline' } : null,
+            ]}
+          >
+            {label}
+          </Text>
+          {icon && iconPosition === 'trailing' ? (
+            <Icon name={icon} size={size === 'sm' ? 16 : 18} color={content[variant]} />
+          ) : null}
+        </>
+      )}
+    </View>
+  );
+
+  const shell: ViewStyle = {
+    height: HEIGHT[size],
+    borderRadius: radius.sm,
+    paddingHorizontal: size === 'sm' ? space.md : space.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    overflow: 'hidden',
+    opacity: isDisabled ? 0.45 : 1,
+    alignSelf: fullWidth ? 'stretch' : 'flex-start',
+  };
 
   return (
-    <Animated.View style={[{ transform: [{ scale }] }, fullWidth ? { alignSelf: 'stretch' } : null]}>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityState={{ disabled: Boolean(isDisabled), busy: loading }}
-        accessibilityLabel={label}
-        disabled={isDisabled}
-        onPressIn={() => press(0.972)}
-        onPressOut={() => press(1)}
-        onPress={(event) => {
-          if (!silent && Platform.OS !== 'web') {
-            void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          }
-          onPress?.(event);
-        }}
-        style={[
-          styles.base,
-          surfaces[variant],
-          {
-            height: heights[size],
-            borderRadius: radius.md,
-            paddingHorizontal: size === 'sm' ? 14 : 20,
-            opacity: isDisabled ? 0.45 : 1,
-          },
-          style,
-        ]}
-        {...rest}
-      >
-        {loading ? (
-          <ActivityIndicator color={content} />
-        ) : (
-          <View style={styles.row}>
-            {icon && iconPosition === 'leading' ? (
-              <View style={{ marginRight: 8 }}>
-                <Icon name={icon} size={size === 'sm' ? 16 : 18} color={content} />
-              </View>
-            ) : null}
-            <Text
-              variant={size === 'sm' ? 'label' : 'headline'}
-              numberOfLines={1}
-              style={{ color: content, letterSpacing: -0.1 }}
-            >
-              {label}
-            </Text>
-            {icon && iconPosition === 'trailing' ? (
-              <View style={{ marginLeft: 8 }}>
-                <Icon name={icon} size={size === 'sm' ? 16 : 18} color={content} />
-              </View>
-            ) : null}
-          </View>
-        )}
-      </Pressable>
-    </Animated.View>
+    <Touchable
+      onPress={onPress}
+      disabled={isDisabled}
+      scaleTo={0.975}
+      haptic={variant === 'primary' ? 'medium' : 'light'}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityHint={accessibilityHint}
+      accessibilityState={{ disabled: isDisabled, busy: loading }}
+      style={[shell, backgrounds[variant], style ?? {}]}
+    >
+      {variant === 'primary' ? (
+        <LinearGradient
+          colors={[...palette.brandGradient]}
+          start={{ x: 0, y: 0 }}
+          end={{ x: 1, y: 1 }}
+          style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+        />
+      ) : null}
+      {body}
+    </Touchable>
   );
 }
-
-const styles = StyleSheet.create({
-  base: { alignItems: 'center', justifyContent: 'center' },
-  row: { flexDirection: 'row', alignItems: 'center' },
-});

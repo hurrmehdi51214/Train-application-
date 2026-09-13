@@ -15,8 +15,8 @@ import { Platform } from 'react-native';
  * docs/SECURITY.md.
  */
 
-const REFRESH_KEY = 'meridian.refresh-token';
-const DEVICE_KEY = 'meridian.device-id';
+const REFRESH_KEY = 'safar.refresh-token';
+const DEVICE_KEY = 'safar.device-id';
 
 interface TokenSet {
   accessToken: string;

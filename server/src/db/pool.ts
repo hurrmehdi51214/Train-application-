@@ -41,13 +41,13 @@ export const railRead = new pg.Pool({
   // us far more than it protects us.
   statement_timeout: config.RAIL_DB_STATEMENT_TIMEOUT_MS,
   idleTimeoutMillis: 30_000,
-  application_name: 'meridian-gateway',
+  application_name: 'safar-gateway',
 });
 
 export const gatewayWrite = new pg.Pool({
   connectionString: config.GATEWAY_DB_URL,
   max: 20,
-  application_name: 'meridian-gateway',
+  application_name: 'safar-gateway',
 });
 
 railRead.on('connect', (client) => {

@@ -2,37 +2,37 @@ import React from 'react';
 import { Text as RNText, TextProps as RNTextProps, TextStyle } from 'react-native';
 
 import { useTheme } from '@/theme/ThemeProvider';
-import { type as typeScale } from '@/theme/typography';
+import { type as typeScale, TypeVariant } from '@/theme/typography';
 
-type Variant = keyof typeof typeScale;
-type Tone = 'primary' | 'secondary' | 'tertiary' | 'inverse' | 'brand' | 'accent' | 'critical' | 'success';
+type Tone =
+  | 'primary'
+  | 'secondary'
+  | 'tertiary'
+  | 'inverse'
+  | 'brand'
+  | 'error'
+  | 'warning'
+  | 'success';
 
 export interface TextProps extends RNTextProps {
-  variant?: Variant;
+  variant?: TypeVariant;
   tone?: Tone;
   align?: TextStyle['textAlign'];
-  /** Optical adjustment for headings sitting directly above body copy. */
-  tight?: boolean;
+  /** Renders Urdu right-to-left with a little extra line height. */
+  urdu?: boolean;
 }
 
-export function Text({
-  variant = 'body',
-  tone = 'primary',
-  align,
-  tight,
-  style,
-  ...rest
-}: TextProps) {
+export function Text({ variant = 'body', tone, align, urdu, style, ...rest }: TextProps) {
   const { palette } = useTheme();
 
-  const colors: Record<Tone, string> = {
+  const tones: Record<Tone, string> = {
     primary: palette.textPrimary,
     secondary: palette.textSecondary,
     tertiary: palette.textTertiary,
     inverse: palette.textInverse,
     brand: palette.brand,
-    accent: palette.accent,
-    critical: palette.critical,
+    error: palette.error,
+    warning: palette.warning,
     success: palette.success,
   };
 
@@ -41,9 +41,10 @@ export function Text({
       {...rest}
       style={[
         typeScale[variant],
-        { color: colors[tone] },
+        tone ? { color: tones[tone] } : { color: palette.textPrimary },
         align ? { textAlign: align } : null,
-        tight ? { marginBottom: -2 } : null,
+        // Urdu sits lower on the line and needs the room.
+        urdu ? { writingDirection: 'rtl', lineHeight: (typeScale[variant].lineHeight ?? 20) + 6 } : null,
         style,
       ]}
     />

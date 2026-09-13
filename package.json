@@ -1,8 +1,8 @@
 {
-  "name": "meridian-rail",
+  "name": "safar-rail",
   "version": "1.0.0",
   "private": true,
-  "description": "Meridian Rail - cross-platform train transit app for iOS, Android and web.",
+  "description": "Safar - Pakistan Railways tickets, live trains and journeys. Cross-platform, iOS, Android and web.",
   "main": "expo-router/entry",
   "scripts": {
     "start": "expo start",
@@ -13,9 +13,13 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --ext .ts,.tsx",
     "test": "node --experimental-strip-types --test tests/*.test.ts",
-    "server": "npm --prefix server run dev"
+    "server": "npm --prefix server run dev",
+    "photos": "node scripts/harvest-photos.mjs",
+    "places": "node scripts/sync-places.mjs",
+    "photos:mirror": "node scripts/mirror-photos.mjs"
   },
   "dependencies": {
+    "@expo-google-fonts/manrope": "^0.4.2",
     "@expo/metro-runtime": "~4.0.1",
     "@react-native-async-storage/async-storage": "1.23.1",
     "expo": "~52.0.23",
@@ -23,8 +27,9 @@
     "expo-asset": "~11.0.1",
     "expo-constants": "~17.0.3",
     "expo-crypto": "~14.0.1",
-    "expo-font": "~13.0.2",
+    "expo-font": "~13.0.4",
     "expo-haptics": "~14.0.0",
+    "expo-image": "~2.0.7",
     "expo-linear-gradient": "~14.0.1",
     "expo-linking": "~7.0.3",
     "expo-location": "~18.0.4",
@@ -38,6 +43,7 @@
     "react-dom": "18.3.1",
     "react-native": "0.76.5",
     "react-native-gesture-handler": "~2.20.2",
+    "react-native-maps": "1.18.0",
     "react-native-qrcode-svg": "^6.3.2",
     "react-native-safe-area-context": "4.12.0",
     "react-native-screens": "~4.4.0",

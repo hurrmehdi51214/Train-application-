@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 /**
- * Generates the app icons and splash image.
+ * Draws the app icon, adaptive icon, splash and favicon from the Safar mark.
  *
- * The mark is drawn in code rather than checked in as a binary blob from a
- * design tool: it is forty lines of maths, it regenerates at any size, and a
- * reviewer can see exactly what is in the icon by reading it. `npm run assets`
- * rebuilds every file under assets/.
+ * The mark is generated in code rather than exported from a design tool: it
+ * regenerates at any size, a reviewer can read exactly what is in it, and the
+ * icon can never drift out of sync with the in-app `<LogoMark/>` because both
+ * are built from the same measurements in the same 48-unit grid.
  *
- * Output is written with a hand-rolled PNG encoder (zlib is in Node, and PNG's
- * container format is small) so the repository needs no image dependency.
+ * `npm run assets` rebuilds everything under assets/.
  */
 import { deflateSync } from 'node:zlib';
 import { writeFileSync, mkdirSync } from 'node:fs';
@@ -18,11 +17,11 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const assetsDir = resolve(here, '..', 'assets');
 
-const INK = [0x0b, 0x1a, 0x22];
-const PETROL = [0x0f, 0x5d, 0x5a];
-const PETROL_LIFT = [0x17, 0x85, 0x7f];
-const BRASS = [0xe0, 0xa3, 0x4e];
-const PAPER = [0xf6, 0xf9, 0xf9];
+const GREEN = [0x0e, 0x7a, 0x3a];
+const GREEN_DEEP = [0x01, 0x41, 0x1c];
+const WHITE = [0xff, 0xff, 0xff];
+
+/* ------------------------------------------------------------- PNG writer */
 
 function crc32(buffer) {
   let table = crc32.table;
@@ -42,28 +41,24 @@ function crc32(buffer) {
 function chunk(type, data) {
   const length = Buffer.alloc(4);
   length.writeUInt32BE(data.length);
-  const typeAndData = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+  const typed = Buffer.concat([Buffer.from(type, 'ascii'), data]);
   const crc = Buffer.alloc(4);
-  crc.writeUInt32BE(crc32(typeAndData));
-  return Buffer.concat([length, typeAndData, crc]);
+  crc.writeUInt32BE(crc32(typed));
+  return Buffer.concat([length, typed, crc]);
 }
 
-/** pixels: Uint8Array of RGBA, length width*height*4 */
 function encodePng(width, height, pixels) {
   const stride = width * 4;
   const raw = Buffer.alloc((stride + 1) * height);
   for (let y = 0; y < height; y += 1) {
-    raw[y * (stride + 1)] = 0; // filter: none
-    Buffer.from(pixels.buffer, pixels.byteOffset + y * stride, stride).copy(
-      raw,
-      y * (stride + 1) + 1,
-    );
+    raw[y * (stride + 1)] = 0;
+    Buffer.from(pixels.buffer, pixels.byteOffset + y * stride, stride).copy(raw, y * (stride + 1) + 1);
   }
   const ihdr = Buffer.alloc(13);
   ihdr.writeUInt32BE(width, 0);
   ihdr.writeUInt32BE(height, 4);
-  ihdr[8] = 8; // bit depth
-  ihdr[9] = 6; // colour type: RGBA
+  ihdr[8] = 8;
+  ihdr[9] = 6;
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', ihdr),
@@ -72,23 +67,75 @@ function encodePng(width, height, pixels) {
   ]);
 }
 
+/* ------------------------------------------------------- signed-distance kit */
+
+const roundedRect = (cx, cy, halfW, halfH, r) => (x, y) => {
+  const dx = Math.abs(x - cx) - (halfW - r);
+  const dy = Math.abs(y - cy) - (halfH - r);
+  return Math.hypot(Math.max(dx, 0), Math.max(dy, 0)) + Math.min(Math.max(dx, dy), 0) - r;
+};
+
+const disc = (cx, cy, r) => (x, y) => Math.hypot(x - cx, y - cy) - r;
+
+const capsule = (x1, y1, x2, y2, thickness) => (x, y) => {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy || 1;
+  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / lenSq));
+  return Math.hypot(x - (x1 + t * dx), y - (y1 + t * dy)) - thickness / 2;
+};
+
+/** Regular n-pointed star, as the union of its triangular points. */
+const star = (cx, cy, outer, inner, points = 5, rotation = -Math.PI / 2) => (x, y) => {
+  // Polar fold: reduce the plane to one wedge, then measure against one edge.
+  const px = x - cx;
+  const py = y - cy;
+  const r = Math.hypot(px, py);
+  if (r === 0) return -inner;
+  const step = (Math.PI * 2) / points;
+  let angle = Math.atan2(py, px) - rotation;
+  angle = ((angle % step) + step) % step;
+  if (angle > step / 2) angle = step - angle;
+  const fx = r * Math.cos(angle);
+  const fy = r * Math.sin(angle);
+  // Edge from the outer tip to the inner vertex of the wedge.
+  const ax = outer;
+  const ay = 0;
+  const bx = inner * Math.cos(step / 2);
+  const by = inner * Math.sin(step / 2);
+  const ex = bx - ax;
+  const ey = by - ay;
+  const t = Math.max(0, Math.min(1, ((fx - ax) * ex + (fy - ay) * ey) / (ex * ex + ey * ey)));
+  const d = Math.hypot(fx - (ax + t * ex), fy - (ay + t * ey));
+  // The wedge's interior lies on the side of the edge that contains the
+  // centre; getting this sign backwards floods the whole canvas.
+  const side = (fx - ax) * ey - (fy - ay) * ex;
+  return side < 0 ? -d : d;
+};
+
+const union = (...fns) => (x, y) => Math.min(...fns.map((f) => f(x, y)));
+const subtract = (a, b) => (x, y) => Math.max(a(x, y), -b(x, y));
+
+/* ------------------------------------------------------------------ canvas */
+
 class Canvas {
-  constructor(width, height, background = [0, 0, 0, 0]) {
+  constructor(width, height, background) {
     this.width = width;
     this.height = height;
     this.pixels = new Uint8Array(width * height * 4);
-    for (let i = 0; i < width * height; i += 1) {
-      this.pixels[i * 4] = background[0];
-      this.pixels[i * 4 + 1] = background[1];
-      this.pixels[i * 4 + 2] = background[2];
-      this.pixels[i * 4 + 3] = background[3] ?? 255;
+    if (background) {
+      for (let i = 0; i < width * height; i += 1) {
+        this.pixels[i * 4] = background[0];
+        this.pixels[i * 4 + 1] = background[1];
+        this.pixels[i * 4 + 2] = background[2];
+        this.pixels[i * 4 + 3] = 255;
+      }
     }
   }
 
-  /** Alpha-composites a colour at (x, y). `a` is 0..1 and is used for AA. */
-  blend(x, y, [r, g, b], a = 1) {
-    if (a <= 0 || x < 0 || y < 0 || x >= this.width || y >= this.height) return;
-    const i = (Math.floor(y) * this.width + Math.floor(x)) * 4;
+  blend(x, y, [r, g, b], a) {
+    if (a <= 0) return;
+    const i = (y * this.width + x) * 4;
     const alpha = Math.min(1, a);
     this.pixels[i] = Math.round(this.pixels[i] * (1 - alpha) + r * alpha);
     this.pixels[i + 1] = Math.round(this.pixels[i + 1] * (1 - alpha) + g * alpha);
@@ -96,12 +143,8 @@ class Canvas {
     this.pixels[i + 3] = Math.max(this.pixels[i + 3], Math.round(255 * alpha));
   }
 
-  /**
-   * Fills every pixel whose signed distance to a shape is negative, feathering
-   * the last pixel of the edge. One generic routine covers the rounded square,
-   * the discs and the rails, which is why the mark stays crisp at 48px.
-   */
-  fillSdf(sdf, colour) {
+  /** Fills where the distance field is negative, feathering one pixel of edge. */
+  fill(sdf, colour) {
     for (let y = 0; y < this.height; y += 1) {
       for (let x = 0; x < this.width; x += 1) {
         const d = sdf(x + 0.5, y + 0.5);
@@ -115,105 +158,71 @@ class Canvas {
   }
 }
 
-const roundedSquare = (cx, cy, half, radius) => (x, y) => {
-  const dx = Math.abs(x - cx) - (half - radius);
-  const dy = Math.abs(y - cy) - (half - radius);
-  const outside = Math.hypot(Math.max(dx, 0), Math.max(dy, 0));
-  return outside + Math.min(Math.max(dx, dy), 0) - radius;
-};
-
-const disc = (cx, cy, r) => (x, y) => Math.hypot(x - cx, y - cy) - r;
-
-/** Capsule: the signed distance to a thick line segment. */
-const capsule = (x1, y1, x2, y2, thickness) => (x, y) => {
-  const dx = x2 - x1;
-  const dy = y2 - y1;
-  const lengthSq = dx * dx + dy * dy || 1;
-  const t = Math.max(0, Math.min(1, ((x - x1) * dx + (y - y1) * dy) / lengthSq));
-  return Math.hypot(x - (x1 + t * dx), y - (y1 + t * dy)) - thickness / 2;
-};
+/* -------------------------------------------------------------- the mark */
 
 /**
- * The mark: two rails running to a vanishing point, with sleepers, inside a
- * rounded square. It reads as "railway" at 1024px and still reads as an arrow
- * pointing forward at 48px, which is the size that actually matters.
+ * Draws the Safar mark into `canvas`, sized to `unit` * 48 and centred on
+ * (cx, cy). Coordinates below are the same 48-unit grid the React component
+ * uses, so the two can be compared side by side.
  */
-function drawMark(canvas, size, { background = true } = {}) {
-  const c = size / 2;
-  const plate = size * 0.34;
+function drawMark(canvas, cx, cy, unit, { body = WHITE, glass = GREEN_DEEP } = {}) {
+  const u = (v) => v * unit;
+  const X = (v) => cx + u(v - 24);
+  const Y = (v) => cy + u(v - 24);
 
-  if (background) {
-    canvas.fillSdf(roundedSquare(c, c, plate, plate * 0.42), PETROL);
-    // A soft lift along the top edge so the plate is not a flat slab.
-    canvas.fillSdf(roundedSquare(c, c - plate * 0.06, plate * 0.97, plate * 0.42), PETROL_LIFT);
-    canvas.fillSdf(roundedSquare(c, c + plate * 0.03, plate * 0.95, plate * 0.4), PETROL);
-  }
+  // Nose: an arch. A disc for the dome, a rounded box for the flanks.
+  canvas.fill(
+    union(
+      disc(X(24), Y(18.4), u(10.4)),
+      roundedRect(X(24), Y(28.2), u(10.4), u(9.8), u(3.8)),
+    ),
+    body,
+  );
 
-  const top = c - plate * 0.5;
-  const bottom = c + plate * 0.58;
-  const spread = plate * 0.46;
-  // The rails converge but never meet: a closed apex reads as a letter A, an
-  // open one reads as track running to a vanishing point.
-  const apex = size * 0.052;
-  const railWidth = size * 0.034;
+  // Windscreen.
+  canvas.fill(roundedRect(X(24), Y(19.3), u(6.6), u(4.7), u(3.4)), glass);
 
-  // Sleepers first, so the rails sit over them. Each one is inset to the rail
-  // centres at its own height, so nothing pokes out past the track.
-  const sleepers = 5;
-  for (let i = 0; i < sleepers; i += 1) {
-    const t = (i + 0.55) / sleepers;
-    const y = top + (bottom - top) * t;
-    const halfWidth = apex + (spread - apex) * t - railWidth * 0.25;
-    canvas.fillSdf(
-      capsule(c - halfWidth, y, c + halfWidth, y, railWidth * 0.52),
-      background ? PAPER : PETROL,
-    );
-  }
+  // The flag, inside the glass.
+  canvas.fill(
+    subtract(disc(X(22.9), Y(19.3), u(3.55)), disc(X(24.75), Y(19.3), u(3.5))),
+    body,
+  );
+  canvas.fill(star(X(27.6), Y(19.6), u(2.5), u(1.05)), body);
 
-  canvas.fillSdf(capsule(c - spread, bottom, c - apex, top, railWidth), BRASS);
-  canvas.fillSdf(capsule(c + spread, bottom, c + apex, top, railWidth), BRASS);
+  // Lamps.
+  canvas.fill(disc(X(19.6), Y(29.8), u(2.1)), glass);
+  canvas.fill(disc(X(28.4), Y(29.8), u(2.1)), glass);
+
+  // Rails, receding.
+  canvas.fill(capsule(X(15.9), Y(41.8), X(18.7), Y(37.8), u(2.4)), body);
+  canvas.fill(capsule(X(32.1), Y(41.8), X(29.3), Y(37.8), u(2.4)), body);
 }
 
+/* ------------------------------------------------------------- the outputs */
+
 function icon(size) {
-  const canvas = new Canvas(size, size, [...INK, 255]);
-  drawMark(canvas, size);
+  const canvas = new Canvas(size, size, GREEN);
+  drawMark(canvas, size / 2, size / 2 - size * 0.012, size / 48);
   return canvas.toPng();
 }
 
-/** Adaptive icons are masked hard, so the mark sits inside the 66% safe zone. */
+/** Android masks adaptive icons hard, so the mark sits in the 66% safe zone. */
 function adaptiveIcon(size) {
-  const canvas = new Canvas(size, size, [...INK, 255]);
-  const inner = new Canvas(size, size, [0, 0, 0, 0]);
-  drawMark(inner, size * 0.72);
-  const offset = Math.round(size * 0.14);
-  for (let y = 0; y < size * 0.72; y += 1) {
-    for (let x = 0; x < size * 0.72; x += 1) {
-      const i = (y * size + x) * 4;
-      const alpha = inner.pixels[i + 3] / 255;
-      if (alpha > 0) {
-        canvas.blend(x + offset, y + offset, [inner.pixels[i], inner.pixels[i + 1], inner.pixels[i + 2]], alpha);
-      }
-    }
-  }
+  const canvas = new Canvas(size, size, GREEN);
+  drawMark(canvas, size / 2, size / 2, (size * 0.68) / 48);
   return canvas.toPng();
 }
 
 function splash(width, height) {
-  const canvas = new Canvas(width, height, [...INK, 255]);
-  const size = Math.min(width, height);
-  const square = new Canvas(size, size, [0, 0, 0, 0]);
-  drawMark(square, size * 0.62);
-  const ox = Math.round((width - size * 0.62) / 2);
-  const oy = Math.round((height - size * 0.62) / 2);
-  for (let y = 0; y < size * 0.62; y += 1) {
-    for (let x = 0; x < size * 0.62; x += 1) {
-      const i = (y * size + x) * 4;
-      const alpha = square.pixels[i + 3] / 255;
-      if (alpha > 0) {
-        canvas.blend(x + ox, y + oy, [square.pixels[i], square.pixels[i + 1], square.pixels[i + 2]], alpha);
-      }
-    }
-  }
+  const canvas = new Canvas(width, height, GREEN);
+  drawMark(canvas, width / 2, height / 2, (Math.min(width, height) * 0.42) / 48);
+  return canvas.toPng();
+}
+
+/** Notification icons are masked to a silhouette, so draw solid white on clear. */
+function notificationIcon(size) {
+  const canvas = new Canvas(size, size, null);
+  drawMark(canvas, size / 2, size / 2, (size * 0.86) / 48, { body: WHITE, glass: WHITE });
   return canvas.toPng();
 }
 
@@ -224,7 +233,7 @@ const outputs = {
   'adaptive-icon.png': adaptiveIcon(1024),
   'favicon.png': icon(64),
   'splash.png': splash(1284, 2778),
-  'notification-icon.png': icon(96),
+  'notification-icon.png': notificationIcon(96),
 };
 
 for (const [name, buffer] of Object.entries(outputs)) {

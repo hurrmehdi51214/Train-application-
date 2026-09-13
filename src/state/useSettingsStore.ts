@@ -3,22 +3,26 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type Appearance = 'system' | 'light' | 'dark';
+export type Language = 'en' | 'ur';
 
 interface SettingsState {
   appearance: Appearance;
+  language: Language;
   passengerName: string;
-  /** Alerts the passenger has opted into. Off by default is not helpful here -
-   *  someone who books a train wants to know it left. Disruption is opt-out. */
+  cnicLast6: string;
+  phone: string;
+
   notifyJourneyStart: boolean;
   notifyApproaching: boolean;
   notifyArrival: boolean;
   notifyDisruption: boolean;
-  /** Minutes before the stop to warn. 5 is the default the ops team recommends. */
+  /** Minutes before the stop to warn. */
   approachWarningMinutes: number;
-  preferQuietCoach: boolean;
-  requireStepFree: boolean;
+
+  preferLowerBerth: boolean;
   keepMapsOffline: boolean;
-  hasCompletedOnboarding: boolean;
+  hasOnboarded: boolean;
+
   set<K extends keyof SettingsState>(key: K, value: SettingsState[K]): void;
 }
 
@@ -26,22 +30,28 @@ export const useSettingsStore = create<SettingsState>()(
   persist(
     (set) => ({
       appearance: 'system',
+      language: 'en',
       passengerName: '',
+      cnicLast6: '',
+      phone: '',
+
+      // Someone who books a train wants to know it left. These are opt-out.
       notifyJourneyStart: true,
       notifyApproaching: true,
       notifyArrival: true,
       notifyDisruption: true,
-      approachWarningMinutes: 5,
-      preferQuietCoach: false,
-      requireStepFree: false,
+      approachWarningMinutes: 15,
+
+      preferLowerBerth: false,
       keepMapsOffline: true,
-      hasCompletedOnboarding: false,
+      hasOnboarded: false,
+
       set: (key, value) => set({ [key]: value } as Partial<SettingsState>),
     }),
     {
-      name: 'meridian.settings',
+      name: 'safar.settings',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
       partialize: (state) => {
         const { set: _set, ...rest } = state;
         return rest;

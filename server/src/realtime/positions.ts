@@ -100,7 +100,7 @@ export function attachPositionStream(server: Server, path = '/v1/stream'): WebSo
         for (const serviceId of client.services) {
           const row = byService.get(serviceId);
           if (!row) continue;
-          client.socket.send(JSON.stringify({ type: 'position', position: toPosition(row, 2) }));
+          client.socket.send(JSON.stringify({ type: 'position', position: toPosition(row) }));
         }
       }
     } catch (error) {

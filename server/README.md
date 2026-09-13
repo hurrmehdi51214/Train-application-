@@ -1,8 +1,8 @@
-# Meridian gateway
+# Safar gateway
 
-The service between the app and the operator's existing train system. It reads
-from the railway, writes only to its own database, and is the only thing in the
-system that holds a credential.
+The service between the app and Pakistan Railways' existing reservation and
+control-office systems. It reads from the railway, writes only to its own
+database, and is the only thing in the system that holds a credential.
 
 ```
 cp .env.example .env
@@ -17,13 +17,15 @@ reachable.
 
 ## What it is responsible for
 
-- Translating the railway's schema (TIPLOCs, activations, calling points) into
-  the app's domain model. All of that lives in `src/db/legacyRail.ts` and
-  `src/db/mappers.ts`.
+- Translating the railway's schema (run UIDs, stop sequences, slab fares, berth
+  types) into the app's domain model. All of that lives in
+  `src/db/legacyRail.ts` and `src/db/mappers.ts`.
 - Minting and signing tickets, idempotently and atomically with the charge.
-- Fanning out live positions over WebSockets - one poll of the railway, many
+- Fanning out live positions over WebSockets: one poll of the railway, many
   subscribers.
 - Normalising last-mile feeds so the phone speaks one protocol.
+- Holding the billable Google Maps key. Directions, Geocoding, Places and
+  Distance Matrix go through `/v1/maps/*`; the app never has a server key.
 
 ## What it must never do
 
@@ -46,6 +48,7 @@ src/
     services.ts          services, departure boards, positions
     tickets.ts           purchase, activation, public key set
     connections.ts       last-mile (integration seam)
+    maps.ts              Google Maps proxy, server key, Pakistan only
   security/
     tickets.ts           Ed25519 signing, KMS seam, references, fingerprints
     keygen.ts            development keys only
@@ -62,17 +65,22 @@ src/
 Three things are deliberately unimplemented, each throwing or returning empty
 rather than pretending:
 
-1. `security/tickets.ts` - `KmsSigner.sign`, against your KMS's asymmetric-sign
+1. `security/tickets.ts`, `KmsSigner.sign`, against your KMS's asymmetric-sign
    API. The gateway refuses to boot in production with a PEM key in the
    environment, so this is not optional.
-2. `routes/connections.ts` - `loadConnections`, against the region's GTFS-RT and
-   GBFS feeds.
-3. `middleware/rateLimit.ts` - move the bucket store to Redis if you run more
+2. `routes/connections.ts`, `loadConnections`, against the city transit feeds:
+   Punjab Masstransit, Sindh's People's Bus Service, TransPeshawar.
+3. `middleware/rateLimit.ts`, move the bucket store to Redis if you run more
    than one replica.
 
+Set `GOOGLE_MAPS_SERVER_KEY` if you want walking directions, geocoding and place
+lookups. Without it `/v1/maps/*` answers 503 and the app falls back to its own
+bundled geometry, which is a supported mode rather than a broken one.
+
 You will also need to point `db/legacyRail.ts` at the real schema. The queries
-there encode a plausible operator model; the column names will not match yours,
-but the shape of what is needed will.
+there encode a plausible PRITS and control-office model; the column names will
+not match yours, but the shape of what is needed will. That adapter is the first
+file to change.
 
 ## Operational notes
 

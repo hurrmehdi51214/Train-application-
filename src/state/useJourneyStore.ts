@@ -9,12 +9,11 @@ import { useSettingsStore } from './useSettingsStore';
 /**
  * The state machine behind the live journey.
  *
- * Phases only ever move forward. A train that briefly reports itself as
- * "approaching" and then falls back to "onboard" (which happens when a trackside
- * sensor is missed) must not re-notify, so `advance` refuses to move backwards
- * and `lastNotifiedPhase` is the gate on sending anything.
+ * Phases only ever move forward. A train that briefly reports "approaching" and
+ * then falls back to "onboard" - which happens whenever a trackside reading is
+ * missed - must not re-notify, so `advance` refuses to move backwards and
+ * `lastNotifiedPhase` is the gate on sending anything.
  */
-
 const ORDER: JourneyPhase[] = [
   'idle',
   'to-station',
@@ -25,19 +24,15 @@ const ORDER: JourneyPhase[] = [
   'completed',
 ];
 
-function rank(phase: JourneyPhase): number {
-  return ORDER.indexOf(phase);
-}
+const rank = (phase: JourneyPhase) => ORDER.indexOf(phase);
 
 interface JourneyState {
   active: ActiveJourney | null;
-  /** Snapshot of the last calls we saw, to diff platform/delay changes against. */
+  /** Last calls we saw, to diff platform and delay changes against. */
   lastCalls: Record<string, Call>;
   begin(ticket: Ticket): void;
   end(): void;
-  /** Feeds a fresh service snapshot in; returns the phase after reconciling. */
   reconcile(ticket: Ticket, service: TrainService, now?: number): Promise<JourneyPhase>;
-  markPassed(sequence: number): void;
 }
 
 function phaseFor(ticket: Ticket, service: TrainService, now: number, warnMinutes: number): JourneyPhase {
@@ -48,12 +43,12 @@ function phaseFor(ticket: Ticket, service: TrainService, now: number, warnMinute
   const departure = new Date(boarding.expectedDeparture ?? boarding.scheduledDeparture ?? 0).getTime();
   const arrival = new Date(alighting.expectedArrival ?? alighting.scheduledArrival ?? 0).getTime();
 
-  if (now >= arrival + 12 * 60_000) return 'completed';
+  if (now >= arrival + 20 * 60_000) return 'completed';
   if (now >= arrival) return 'arrived';
   if (now >= arrival - warnMinutes * 60_000) return 'approaching';
   if (now >= departure) return 'onboard';
-  // Before departure: "at-station" once the train is berthed and boarding.
-  if (now >= departure - 10 * 60_000) return 'at-station';
+  // Boarding on a long-distance train opens well before departure.
+  if (now >= departure - 45 * 60_000) return 'at-station';
   return 'to-station';
 }
 
@@ -81,25 +76,12 @@ export const useJourneyStore = create<JourneyState>()(
         set({ active: null, lastCalls: {} });
       },
 
-      markPassed(sequence) {
-        set((state) => {
-          if (!state.active) return state;
-          if (state.active.passedCallSequences.includes(sequence)) return state;
-          return {
-            active: {
-              ...state.active,
-              passedCallSequences: [...state.active.passedCallSequences, sequence].sort((a, b) => a - b),
-            },
-          };
-        });
-      },
-
       async reconcile(ticket, service, now = Date.now()) {
         const settings = useSettingsStore.getState();
         const active = get().active;
         const next = phaseFor(ticket, service, now, settings.approachWarningMinutes);
 
-        // --- disruption diffing, independent of phase ---------------------
+        // Disruption diffing, independent of phase.
         if (settings.notifyDisruption) {
           const previous = get().lastCalls;
           const relevant = service.calls.filter(
@@ -118,14 +100,11 @@ export const useJourneyStore = create<JourneyState>()(
         }
 
         if (!active) return next;
+
         // Never regress: a dropped sensor reading is not a reason to un-arrive.
         const phase = rank(next) > rank(active.phase) ? next : active.phase;
 
-        const passed = service.calls
-          .filter((c) => c.status === 'departed' || c.status === 'arrived')
-          .map((c) => c.sequence);
-
-        const wants: Record<string, boolean> = {
+        const wants: Partial<Record<JourneyPhase, boolean>> = {
           onboard: settings.notifyJourneyStart,
           approaching: settings.notifyApproaching,
           arrived: settings.notifyArrival,
@@ -146,7 +125,9 @@ export const useJourneyStore = create<JourneyState>()(
             ...active,
             phase,
             startedAt: active.startedAt ?? (rank(phase) >= rank('onboard') ? new Date(now).toISOString() : null),
-            passedCallSequences: passed,
+            passedCallSequences: service.calls
+              .filter((c) => c.status === 'departed' || c.status === 'arrived')
+              .map((c) => c.sequence),
             lastNotifiedPhase,
           },
         });
@@ -155,9 +136,9 @@ export const useJourneyStore = create<JourneyState>()(
       },
     }),
     {
-      name: 'meridian.journey',
+      name: 'safar.journey',
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
       partialize: (state) => ({ active: state.active, lastCalls: state.lastCalls }),
     },
   ),

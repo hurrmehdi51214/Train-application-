@@ -7,6 +7,7 @@ import { referenceRouter } from './routes/reference.js';
 import { serviceRouter } from './routes/services.js';
 import { ticketRouter } from './routes/tickets.js';
 import { connectionRouter } from './routes/connections.js';
+import { mapsRouter } from './routes/maps.js';
 import { attachPositionStream } from './realtime/positions.js';
 import { requestId, securityHeaders, cachePolicy, notFound, errorHandler } from './middleware/security.js';
 import { rateLimit } from './middleware/rateLimit.js';
@@ -33,6 +34,7 @@ app.use('/v1', referenceRouter);
 app.use('/v1', serviceRouter);
 app.use('/v1', ticketRouter);
 app.use('/v1', connectionRouter);
+app.use('/v1/maps', mapsRouter);
 
 app.use(notFound);
 app.use(errorHandler);
@@ -41,7 +43,7 @@ const server = createServer(app);
 attachPositionStream(server, '/v1/stream');
 
 server.listen(config.PORT, () => {
-  console.log(`Meridian gateway listening on :${config.PORT} (${config.NODE_ENV})`);
+  console.log(`Safar gateway listening on :${config.PORT} (${config.NODE_ENV})`);
 });
 
 /**

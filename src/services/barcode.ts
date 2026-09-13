@@ -67,11 +67,11 @@ export async function buildBarcodePayload(input: {
 }): Promise<string> {
   const code = await rotatingCode(input.seed, input.atMs);
   const window = windowFor(input.atMs ?? Date.now(), ROTATION_SECONDS);
-  return ['MRD1', input.reference, input.keyId, window.toString(36), code, input.signature].join('|');
+  return ['SFR1', input.reference, input.keyId, window.toString(36), code, input.signature].join('|');
 }
 
 export function parseBarcodePayload(payload: string) {
   const [version, reference, keyId, window, code, signature] = payload.split('|');
-  if (version !== 'MRD1') return null;
+  if (version !== 'SFR1') return null;
   return { version, reference, keyId, window, code, signature };
 }

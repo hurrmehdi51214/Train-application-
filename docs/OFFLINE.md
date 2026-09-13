@@ -9,30 +9,39 @@ queue behind you. So it is worth being exact about what is guaranteed.
 |---|---|
 | Every ticket, including a valid rotating barcode | Buying a new ticket |
 | Station reference data and search | Live delay minutes |
-| Route and station maps | Platform confirmations |
+| Route and station maps, from bundled geometry | Platform confirmations |
+| The PNR, class, coach and berth on every ticket | Walking directions from Google |
 | The last known times for a journey you have opened | Last-mile departure times |
 | Activating a ticket (queues and replays) | - |
 
 Anything served from the cache is labelled in the UI with where it came from.
 The app never shows a stale platform number as if it were live.
 
-## Why the map is not tiles
+## The map has two modes, and the fallback is not a failure
 
-A raster tile map would need a tile server, a cache directory, an eviction
-policy, and a several-hundred-megabyte download to be useful offline. Meridian
-renders the network from vector geometry instead (`src/components/map/`,
-`src/data/geometry.ts`).
+With a Maps key and a connection, the app renders Google Maps: `react-native-maps`
+on iOS and Android, the Maps JavaScript API on web, behind one `<Map/>`
+component.
 
-The trade, stated plainly: **we give up streets and building footprints.** In
-exchange:
+With neither, it draws the network itself from vector geometry
+(`src/components/map/VectorMap.tsx`, `src/data/geometry.ts`). Google's own
+offline areas are a per-user, per-device download that cannot be relied on, and
+a raster tile cache of our own would need a tile server, an eviction policy and
+a several-hundred-megabyte download to be useful.
+
+The trade, stated plainly: **the fallback gives up streets and building
+footprints.** In exchange:
 
 - The whole network is a few kilobytes and ships inside the app bundle.
 - It draws in one frame and animates at 60fps on a mid-range Android.
 - It is legible at a glance on a moving train, because we control every stroke.
-- It works identically with the radio off - there is no tile cache to miss.
+- It works identically with the radio off. There is no tile cache to miss, and
+  no bill.
 
-For street-level detail, "Open in Maps" hands off to the platform app, which is
-better at that job and which most people already have offline data for.
+This is what runs between Sibi and Quetta, where the line spends a long time
+inside the Bolan tunnels. For street-level detail at either end, "Open in Maps"
+hands off to the platform app, which is better at that job and which many people
+already have offline areas for.
 
 ## Cache design
 
@@ -90,6 +99,6 @@ millisecond, repeatedly.
 
 ## Storage footprint
 
-Account then Storage shows the cache size and offers to clear it. Clearing
+Profile then Storage shows the cache size and offers to clear it. Clearing
 removes only unpinned entries, and the copy says so explicitly: tickets are never
 touched.

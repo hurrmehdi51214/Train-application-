@@ -1,64 +1,31 @@
 import React, { createContext, useContext, useMemo } from 'react';
-import { Platform, useColorScheme, ViewStyle } from 'react-native';
+import { useColorScheme } from 'react-native';
 
-import { darkPalette, lightPalette, Palette, radius, space, duration } from './tokens';
-import { type as typeScale, fonts } from './typography';
+import {
+  darkPalette,
+  duration,
+  lightPalette,
+  Palette,
+  radius,
+  shadow,
+  space,
+  spring,
+  zIndex,
+} from './tokens';
+import { fontFamily, type as typeScale } from './typography';
 import { useSettingsStore } from '@/state/useSettingsStore';
-
-export interface Elevation {
-  card: ViewStyle;
-  sheet: ViewStyle;
-  floating: ViewStyle;
-}
-
-/**
- * Shadows are defined once, per mode. In dark mode a drop shadow reads as mud,
- * so elevation there is carried by a hairline and a lighter surface instead.
- */
-function elevationFor(palette: Palette): Elevation {
-  if (palette.mode === 'dark') {
-    const hairline: ViewStyle = {
-      borderWidth: Platform.OS === 'web' ? 1 : StyleSheetHairline,
-      borderColor: palette.hairline,
-    };
-    return { card: hairline, sheet: hairline, floating: hairline };
-  }
-  return {
-    card: {
-      shadowColor: '#0B1A22',
-      shadowOpacity: 0.06,
-      shadowRadius: 14,
-      shadowOffset: { width: 0, height: 6 },
-      elevation: 2,
-    },
-    sheet: {
-      shadowColor: '#0B1A22',
-      shadowOpacity: 0.12,
-      shadowRadius: 28,
-      shadowOffset: { width: 0, height: -8 },
-      elevation: 12,
-    },
-    floating: {
-      shadowColor: '#0B1A22',
-      shadowOpacity: 0.16,
-      shadowRadius: 20,
-      shadowOffset: { width: 0, height: 10 },
-      elevation: 8,
-    },
-  };
-}
-
-const StyleSheetHairline = Platform.OS === 'android' ? 1 : 0.5;
 
 export interface Theme {
   palette: Palette;
   space: typeof space;
   radius: typeof radius;
   duration: typeof duration;
+  spring: typeof spring;
+  shadow: typeof shadow;
+  zIndex: typeof zIndex;
   type: typeof typeScale;
-  fonts: typeof fonts;
-  elevation: Elevation;
-  hairlineWidth: number;
+  font: typeof fontFamily;
+  isDark: boolean;
 }
 
 const ThemeContext = createContext<Theme | null>(null);
@@ -69,16 +36,18 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   const theme = useMemo<Theme>(() => {
     const mode = preference === 'system' ? (system ?? 'light') : preference;
-    const palette = mode === 'dark' ? darkPalette : lightPalette;
+    const isDark = mode === 'dark';
     return {
-      palette,
+      palette: isDark ? darkPalette : lightPalette,
       space,
       radius,
       duration,
+      spring,
+      shadow,
+      zIndex,
       type: typeScale,
-      fonts,
-      elevation: elevationFor(palette),
-      hairlineWidth: StyleSheetHairline,
+      font: fontFamily,
+      isDark,
     };
   }, [preference, system]);
 
@@ -89,14 +58,4 @@ export function useTheme(): Theme {
   const theme = useContext(ThemeContext);
   if (!theme) throw new Error('useTheme must be used inside <ThemeProvider>');
   return theme;
-}
-
-/**
- * Style factories receive the theme and are memoised per mode. Keeps StyleSheet
- * creation out of render bodies without forcing every component to thread the
- * theme through by hand.
- */
-export function useStyles<T>(factory: (theme: Theme) => T): T {
-  const theme = useTheme();
-  return useMemo(() => factory(theme), [theme, factory]);
 }

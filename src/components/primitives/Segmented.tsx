@@ -1,8 +1,9 @@
 import React, { useRef, useState } from 'react';
-import { Animated, LayoutChangeEvent, Pressable, View } from 'react-native';
+import { Animated, LayoutChangeEvent, View } from 'react-native';
 
 import { useTheme } from '@/theme/ThemeProvider';
 import { Text } from './Text';
+import { Touchable } from './Touchable';
 
 export interface SegmentedProps<T extends string> {
   options: Array<{ value: T; label: string }>;
@@ -11,7 +12,7 @@ export interface SegmentedProps<T extends string> {
 }
 
 export function Segmented<T extends string>({ options, value, onChange }: SegmentedProps<T>) {
-  const { palette, radius, space } = useTheme();
+  const { palette, radius, space, spring, shadow } = useTheme();
   const [width, setWidth] = useState(0);
   const slide = useRef(new Animated.Value(0)).current;
 
@@ -24,52 +25,52 @@ export function Segmented<T extends string>({ options, value, onChange }: Segmen
     slide.setValue((index * (next - 8)) / options.length);
   };
 
-  const select = (nextIndex: number, nextValue: T) => {
-    Animated.spring(slide, {
-      toValue: nextIndex * segmentWidth,
-      useNativeDriver: true,
-      speed: 22,
-      bounciness: 6,
-    }).start();
-    onChange(nextValue);
-  };
-
   return (
     <View
       onLayout={onLayout}
+      accessibilityRole="tablist"
       style={{
         flexDirection: 'row',
-        backgroundColor: palette.surfaceSunken,
-        borderRadius: radius.md,
+        backgroundColor: palette.fill,
+        borderRadius: radius.pill,
         padding: 4,
       }}
     >
       {segmentWidth > 0 ? (
         <Animated.View
-          style={{
-            position: 'absolute',
-            top: 4,
-            left: 4,
-            bottom: 4,
-            width: segmentWidth,
-            borderRadius: radius.sm,
-            backgroundColor: palette.surface,
-            transform: [{ translateX: slide }],
-          }}
+          style={[
+            {
+              position: 'absolute',
+              top: 4,
+              left: 4,
+              bottom: 4,
+              width: segmentWidth,
+              borderRadius: radius.pill,
+              backgroundColor: palette.surface,
+              transform: [{ translateX: slide }],
+            },
+            shadow.card,
+          ]}
         />
       ) : null}
+
       {options.map((option, i) => (
-        <Pressable
+        <Touchable
           key={option.value}
+          haptic="selection"
+          scaleTo={1}
           accessibilityRole="tab"
           accessibilityState={{ selected: option.value === value }}
-          onPress={() => select(i, option.value)}
-          style={{ flex: 1, alignItems: 'center', paddingVertical: space.sm + 1 }}
+          onPress={() => {
+            Animated.spring(slide, { toValue: i * segmentWidth, useNativeDriver: true, ...spring.press }).start();
+            onChange(option.value);
+          }}
+          style={{ flex: 1, alignItems: 'center', paddingVertical: space.sm + 2 }}
         >
-          <Text variant="label" tone={option.value === value ? 'primary' : 'secondary'}>
+          <Text variant="bodyMedium" tone={option.value === value ? 'primary' : 'secondary'}>
             {option.label}
           </Text>
-        </Pressable>
+        </Touchable>
       ))}
     </View>
   );
